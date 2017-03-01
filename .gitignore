@@ -21,3 +21,13 @@ _testmain.go
 
 *.exe
 *.test
+
+# Do not include IntelliJ files
+.idea/
+*.iml
+
+# Also no vendor so you can get the original commit
+vendor/
+
+# OSX garbage
+.DS_Store
