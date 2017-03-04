@@ -2,11 +2,11 @@ package blocksources
 
 import (
 	"bytes"
-	"github.com/Redundancy/go-sync/patcher"
-
 	//"runtime"
 	"testing"
 	"time"
+
+	"github.com/Redundancy/go-sync/patcher"
 )
 
 //-----------------------------------------------------------------------------
@@ -291,8 +291,9 @@ func TestRequestCountLimiting(t *testing.T) {
 		waiter <- true
 	}
 
-	close(counter)
-	close(waiter)
+	// FIXME : defering these two channel is only a temporary fix. We should root out the cause.
+	defer close(counter)
+	defer close(waiter)
 
 	if max > MAX_CONCURRENCY {
 		t.Errorf("Maximum requests in flight was greater than the requested concurrency: %v", max)
