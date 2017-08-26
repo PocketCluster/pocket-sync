@@ -91,14 +91,15 @@ func (c *Comparer) startFindMatchingBlocks_int(
 ) {
     defer close(results)
 
-    block := make([]byte, generator.BlockSize)
-    var err error
-
-    ReportErr := func(err error) {
-        results <- BlockMatchResult{
-            Err: err,
+    var (
+        block = make([]byte, generator.BlockSize())
+        err error = nil
+        ReportErr = func(err error) {
+            results <- BlockMatchResult{
+                Err: err,
+            }
         }
-    }
+    )
 
     _, err = io.ReadFull(comparison, block)
 
@@ -109,26 +110,31 @@ func (c *Comparer) startFindMatchingBlocks_int(
         return
     }
 
-    generator.WeakRollingHash.SetBlock(block)
-    singleByte := make([]byte, 1)
-    weaksum := make([]byte, generator.WeakRollingHash.Size())
-    strongSum := make([]byte, 0, generator.GetStrongHash().Size())
+    var (
+        rollingHash = generator.GetWeakRollingHash()
+        strong = generator.GetStrongHash()
 
-    blockMemory := circularbuffer.MakeC2Buffer(int(generator.BlockSize))
+        singleByte = make([]byte, 1)
+        weaksum = make([]byte, rollingHash.Size())
+        strongSum = make([]byte, 0, strong.Size())
+        blockMemory = circularbuffer.MakeC2Buffer(int(generator.BlockSize()))
+    )
+
+    rollingHash.SetBlock(block)
     blockMemory.Write(block)
 
-    strong := generator.GetStrongHash()
-    // All the bytes
-    i := int64(0)
-    next := READ_NEXT_BYTE
-
+    var (
+        // All the bytes
+        i = int64(0)
+        next = READ_NEXT_BYTE
+    )
     //ReadLoop:
     for {
 
         atomic.AddInt64(&c.Comparisons, 1)
 
         // look for a weak match
-        generator.WeakRollingHash.GetSum(weaksum)
+        rollingHash.GetSum(weaksum)
         if weakMatchList := reference.FindWeakChecksum2(weaksum); weakMatchList != nil {
             atomic.AddInt64(&c.WeakHashHits, 1)
 
@@ -142,10 +148,8 @@ func (c *Comparer) startFindMatchingBlocks_int(
             // clear the slice
             strongSum = strongSum[:0]
 
-            // If there are many matches, it means that this block is
-            // duplicated in the reference.
-            // since we care about finding all the blocks in the reference,
-            // we must report all of them
+            // If there are many matches, it means that this block is duplicated in the reference.
+            // since we care about finding all the blocks in the reference, we must report all of them
             off := i + baseOffset
             for _, strongMatch := range strongList {
                 results <- BlockMatchResult{
@@ -165,27 +169,31 @@ func (c *Comparer) startFindMatchingBlocks_int(
             }
         }
 
-        var n int
-        var readBytes []byte
+        var (
+            n int
+            readBytes []byte
+        )
 
         switch next {
-        case READ_NEXT_BYTE:
-            n, err = comparison.Read(singleByte)
-            readBytes = singleByte
-        case READ_NEXT_BLOCK:
-            n, err = io.ReadFull(comparison, block)
-            readBytes = block[:n]
-            next = READ_NEXT_BYTE
+            case READ_NEXT_BYTE: {
+                n, err = comparison.Read(singleByte)
+                readBytes = singleByte
+            }
+            case READ_NEXT_BLOCK: {
+                n, err = io.ReadFull(comparison, block)
+                readBytes = block[:n]
+                next = READ_NEXT_BYTE
+            }
         }
 
-        if uint(n) == generator.BlockSize {
-            generator.WeakRollingHash.SetBlock(block)
+        if uint(n) == generator.BlockSize() {
+            rollingHash.SetBlock(block)
             blockMemory.Write(block)
             i += int64(n)
         } else if n > 0 {
             b_len := blockMemory.Len()
             blockMemory.Write(readBytes)
-            generator.WeakRollingHash.AddAndRemoveBytes(
+            rollingHash.AddAndRemoveBytes(
                 readBytes,
                 blockMemory.Evicted(),
                 b_len,
@@ -205,7 +213,7 @@ func (c *Comparer) startFindMatchingBlocks_int(
 
             b_len := blockMemory.Len()
             removedByte := blockMemory.Truncate(1)
-            generator.WeakRollingHash.RemoveBytes(removedByte, b_len)
+            rollingHash.RemoveBytes(removedByte, b_len)
             i += 1
         }
     }

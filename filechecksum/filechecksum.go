@@ -17,8 +17,7 @@ import (
 // Uses all default hashes (RIPEMD-160 & RollSum64)
 func NewFileChecksumGenerator(blocksize uint) *FileChecksumGenerator {
     return &FileChecksumGenerator{
-        BlockSize:        blocksize,
-        WeakRollingHash:  rollsum.NewRollsum64Base(blocksize),
+        blockSize:        blocksize,
     }
 }
 
@@ -48,14 +47,11 @@ type HashGeneratorFunc func() hash.Hash
  * store state, it is NOT safe to use a generator concurrently for different things.
 */
 type FileChecksumGenerator struct {
-    // See BlockBuffer
-    WeakRollingHash  RollingHash
-    BlockSize        uint
+    blockSize        uint
 }
 
-// Reset all hashes to initial state
-func (check *FileChecksumGenerator) Reset() {
-    check.WeakRollingHash.Reset()
+func (check *FileChecksumGenerator) BlockSize() uint {
+    return check.blockSize
 }
 
 func (check *FileChecksumGenerator) ChecksumSize() int {
@@ -68,7 +64,7 @@ func (check *FileChecksumGenerator) GetChecksumSizes() (int, int) {
 
 // Gets the fresh, clean Weak Hash function for the overall file used on each block
 func (check *FileChecksumGenerator) GetWeakRollingHash() RollingHash {
-    return rollsum.NewRollsum64Base(check.BlockSize)
+    return rollsum.NewRollsum64Base(check.BlockSize())
 }
 
 /*
@@ -143,7 +139,7 @@ func (check *FileChecksumGenerator) generate(
 ) {
 
     var (
-        buffer = make([]byte, check.BlockSize)
+        buffer = make([]byte, check.BlockSize())
         results = make([]chunks.ChunkChecksum, 0, blocksPerResult)
 
         // these hashes are generated and reset to make it clean
@@ -178,7 +174,7 @@ func (check *FileChecksumGenerator) generate(
         rollingHash.GetSum(weakChecksumValue)
         strongChecksumValue = strongHash.Sum(strongChecksumValue)
 
-        blockSize := int64(check.BlockSize)
+        blockSize := int64(check.BlockSize())
 
         if compressionFunction != nil {
             blockSize, err = compressionFunction(section)
