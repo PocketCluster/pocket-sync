@@ -8,10 +8,14 @@ import (
     "strings"
 )
 
-const MB = 1024 * 1024
+const (
+    MB = 1024 * 1024
+)
 
-var RangedRequestNotSupportedError = errors.New("Ranged request not supported (Server did not respond with 206 Status)")
-var ResponseFromServerWasGZiped = errors.New("HTTP response was gzip encoded. Ranges may not match those requested.")
+var (
+    RangedRequestNotSupportedError = errors.New("Ranged request not supported (Server did not respond with 206 Status)")
+    ResponseFromServerWasGZiped = errors.New("HTTP response was gzip encoded. Ranges may not match those requested.")
+)
 
 var ClientNoCompression = &http.Client{
     Transport: &http.Transport{},
@@ -70,13 +74,13 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []by
 
     if rangedResponse.StatusCode == 404 {
         return nil, URLNotFoundError(r.url)
+
     } else if rangedResponse.StatusCode != 206 {
         return nil, RangedRequestNotSupportedError
-    } else if strings.Contains(
-        rangedResponse.Header.Get("Content-Encoding"),
-        "gzip",
-    ) {
+
+    } else if strings.Contains(rangedResponse.Header.Get("Content-Encoding"), "gzip") {
         return nil, ResponseFromServerWasGZiped
+
     } else {
         buf := bytes.NewBuffer(make([]byte, 0, endOffset-startOffset))
         _, err = buf.ReadFrom(rangedResponse.Body)
@@ -86,8 +90,7 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []by
                 "Failed to read response body for %v (%v-%v): %v",
                 r.url,
                 startOffset, endOffset-1,
-                err,
-            )
+                err)
         }
 
         data = buf.Bytes()
@@ -97,8 +100,7 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []by
                 "Unexpected response length %v (%v): %v",
                 r.url,
                 endOffset-startOffset+1,
-                len(data),
-            )
+                len(data))
         }
 
         return
