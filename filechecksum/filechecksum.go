@@ -28,9 +28,8 @@ var DefaultFileHashGenerator = func() hash.Hash {
 // Uses all default hashes (MD5 & rollsum16)
 func NewFileChecksumGenerator(blocksize uint) *FileChecksumGenerator {
     return &FileChecksumGenerator{
-        BlockSize:       blocksize,
-        WeakRollingHash: rollsum.NewRollsum32Base(blocksize),
-        //WeakRollingHash:  rollsum.NewRollsum16Base(blocksize),
+        BlockSize:        blocksize,
+        WeakRollingHash:  rollsum.NewRollsum32Base(blocksize),
         StrongHash:       DefaultStrongHashGenerator(),
         FileChecksumHash: DefaultFileHashGenerator(),
     }
@@ -94,10 +93,11 @@ func (check *FileChecksumGenerator) GetStrongHash() hash.Hash {
     return check.StrongHash
 }
 
-// GenerateChecksums reads each block of the input file, and outputs first the weak, then the strong checksum
-// to the output writer. It will return a checksum for the whole file.
-// Potentially speaking, this might be better producing a channel of blocks, which would remove the need for io from
-// a number of other places.
+/*
+ * GenerateChecksums reads each block of the input file, and outputs first the weak, then the strong checksum to the
+ * output writer. It will return a checksum for the whole file. Potentially speaking, this might be better producing
+ * a channel of blocks, which would remove the need for io from a number of other places.
+ */
 func (check *FileChecksumGenerator) GenerateChecksums(inputFile io.Reader, output io.Writer) (fileChecksum []byte, err error) {
     for chunkResult := range check.StartChecksumGeneration(inputFile, 64, nil) {
         if chunkResult.Err != nil {
@@ -173,7 +173,7 @@ func (check *FileChecksumGenerator) generate(
         }
 
         // As hashes, the assumption is that they never error
-        // additionally, we assume that the only reason not
+        // Additionally, we assume that the only reason not
         // to write a full block would be reaching the end of the file
         fullChecksum.Write(section)
         check.WeakRollingHash.SetBlock(section)
