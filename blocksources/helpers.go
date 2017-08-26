@@ -1,14 +1,16 @@
 package blocksources
 
 import (
-    "fmt"
+    log "github.com/Sirupsen/logrus"
+    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
 )
 
-// errorWatcher is a small helper object
-// sendIfSet will only return a channel if there is an error set
-// so w.sendIfSet() <- w.Err() is always safe in a select statement
-// even if there is no error set
+/*
+ * errorWatcher is a small helper object.
+ * sendIfSet will only return a channel if there is an error set, so w.sendIfSet() <- w.Err() is always safe in a select
+ * statement even if there is no error set
+ */
 type errorWatcher struct {
     errorChannel chan error
     lastError    error
@@ -16,7 +18,7 @@ type errorWatcher struct {
 
 func (w *errorWatcher) setError(e error) {
     if w.lastError != nil {
-        panic("cannot set a new error when one is already set!")
+        log.Errorf(errors.Errorf("cannot set a new error when one is already set!").Error())
     }
     w.lastError = e
 }
@@ -44,8 +46,7 @@ type pendingResponseHelper struct {
 
 func (w *pendingResponseHelper) setResponse(r *patcher.BlockReponse) {
     if w.pendingResponse != nil {
-        p := fmt.Sprintf("Setting a response when one is already set! Had startblock %v, got %v", r.StartBlock, w.pendingResponse.StartBlock)
-        panic(p)
+        log.Errorf(errors.Errorf("Setting a response when one is already set! Had startblock %v, got %v", r.StartBlock, w.pendingResponse.StartBlock).Error())
     }
     w.pendingResponse = r
 }
