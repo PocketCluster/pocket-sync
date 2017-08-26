@@ -6,32 +6,19 @@
 package filechecksum
 
 import (
-    "crypto/md5"
     "hash"
     "io"
 
+    "golang.org/x/crypto/ripemd160"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/rollsum"
 )
 
-// Rsync swapped to this after version 30
-// this is a factory function, because we don't actually want to share hash state
-var DefaultStrongHashGenerator = func() hash.Hash {
-    return md5.New()
-}
-
-// We provide an overall hash of individual files
-var DefaultFileHashGenerator = func() hash.Hash {
-    return md5.New()
-}
-
-// Uses all default hashes (MD5 & rollsum16)
+// Uses all default hashes (RIPEMD-160 & RollSum64)
 func NewFileChecksumGenerator(blocksize uint) *FileChecksumGenerator {
     return &FileChecksumGenerator{
         BlockSize:        blocksize,
-        WeakRollingHash:  rollsum.NewRollsum32Base(blocksize),
-        StrongHash:       DefaultStrongHashGenerator(),
-        FileChecksumHash: DefaultFileHashGenerator(),
+        WeakRollingHash:  rollsum.NewRollsum64Base(blocksize),
     }
 }
 
@@ -54,6 +41,8 @@ type RollingHash interface {
     Reset()
 }
 
+type HashGeneratorFunc func() hash.Hash
+
 /*
  * FileChecksumGenerator provides a description of what hashing functions to use to evaluate a file. Since the hashes
  * store state, it is NOT safe to use a generator concurrently for different things.
@@ -61,36 +50,43 @@ type RollingHash interface {
 type FileChecksumGenerator struct {
     // See BlockBuffer
     WeakRollingHash  RollingHash
-    StrongHash       hash.Hash
-    FileChecksumHash hash.Hash
     BlockSize        uint
 }
 
 // Reset all hashes to initial state
 func (check *FileChecksumGenerator) Reset() {
     check.WeakRollingHash.Reset()
-    check.StrongHash.Reset()
-    check.FileChecksumHash.Reset()
 }
 
 func (check *FileChecksumGenerator) ChecksumSize() int {
-    return check.WeakRollingHash.Size() + check.GetStrongHash().Size()
+    return check.GetWeakRollingHash().Size() + check.GetStrongHash().Size()
 }
 
 func (check *FileChecksumGenerator) GetChecksumSizes() (int, int) {
-    return check.WeakRollingHash.Size(), check.GetStrongHash().Size()
+    return check.GetWeakRollingHash().Size(), check.GetStrongHash().Size()
 }
 
-// Gets the Hash function for the overall file used on each block
-// defaults to md5
+// Gets the fresh, clean Weak Hash function for the overall file used on each block
+func (check *FileChecksumGenerator) GetWeakRollingHash() RollingHash {
+    return rollsum.NewRollsum64Base(check.BlockSize)
+}
+
+/*
+ * Gets the fresh, clean Hash function for the overall file used on each block
+ * We provide an overall hash of individual files
+ * defaults to RipeMD-160
+ */
 func (check *FileChecksumGenerator) GetFileHash() hash.Hash {
-    return check.FileChecksumHash
+    return ripemd160.New()
 }
 
-// Gets the Hash function for the strong hash used on each block
-// defaults to md5, but can be overriden by the generator
+/*
+ * Gets the fresh, clean Hash function for the strong hash used on each block
+ * This is a factory function, because we don't actually want to share hash state
+ * defaults to RipeMD-160
+ */
 func (check *FileChecksumGenerator) GetStrongHash() hash.Hash {
-    return check.StrongHash
+    return ripemd160.New()
 }
 
 /*
@@ -145,23 +141,20 @@ func (check *FileChecksumGenerator) generate(
     compressionFunction CompressionFunction,
     inputFile io.Reader,
 ) {
+
+    var (
+        buffer = make([]byte, check.BlockSize)
+        results = make([]chunks.ChunkChecksum, 0, blocksPerResult)
+
+        // these hashes are generated and reset to make it clean
+        // As these are for one-time use only, throw away as soon as you're done
+        rollingHash = check.GetWeakRollingHash()
+        fullChecksum = check.GetFileHash()
+        strongHash = check.GetStrongHash()
+    )
+
+    // We close channel when it's done
     defer close(resultChan)
-
-    fullChecksum := check.GetFileHash()
-    strongHash := check.GetStrongHash()
-
-    buffer := make([]byte, check.BlockSize)
-
-    // ensure that the hashes are clean
-    strongHash.Reset()
-    fullChecksum.Reset()
-
-    // We reset the hashes when done do we can reuse the generator
-    defer check.WeakRollingHash.Reset()
-    defer strongHash.Reset()
-    defer fullChecksum.Reset()
-
-    results := make([]chunks.ChunkChecksum, 0, blocksPerResult)
 
     i := uint(0)
     for {
@@ -176,13 +169,13 @@ func (check *FileChecksumGenerator) generate(
         // Additionally, we assume that the only reason not
         // to write a full block would be reaching the end of the file
         fullChecksum.Write(section)
-        check.WeakRollingHash.SetBlock(section)
+        rollingHash.SetBlock(section)
         strongHash.Write(section)
 
         strongChecksumValue := make([]byte, 0, strongHash.Size())
-        weakChecksumValue := make([]byte, check.WeakRollingHash.Size())
+        weakChecksumValue := make([]byte, rollingHash.Size())
 
-        check.WeakRollingHash.GetSum(weakChecksumValue)
+        rollingHash.GetSum(weakChecksumValue)
         strongChecksumValue = strongHash.Sum(strongChecksumValue)
 
         blockSize := int64(check.BlockSize)

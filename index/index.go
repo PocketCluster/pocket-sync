@@ -30,20 +30,24 @@ import (
     "github.com/Redundancy/go-sync/chunks"
 )
 
-type ChecksumIndex struct {
-    BlockCount int
+const (
+    // (2017/08/26) weakChecksumLookup map will have 256 elements with assumption that
+    // each transmission block size would be ~ 10MB and the total size would be less than 2.5GB
+    indexOffsetFilter uint64 = 0xFF
+)
 
 /*
- * This datastructure is based on some benchmarking that indicates that it outperforms a basic map 70ns vs 130ns
+ * This datastructure is based on some benchmarking that indicates that it outperforms a basic map 30ns vs ~1600ns
  * for ~8192 checksums (which is reasonably large - say 64 MB with no weak collisions @8192 bytes per block).
  *
  * We use a 256 element slice, and the value of the least significant byte to determine which map to look up into.
  */
-    weakChecksumLookup []map[uint32]StrongChecksumList
-
-    MaxStrongLength     int
-    AverageStrongLength float32
-    Count               int
+type ChecksumIndex struct {
+    weakChecksumLookup     []map[uint64]StrongChecksumList
+    AverageStrongLength    float64
+    BlockCount             int
+    MaxStrongLength        int
+    Count                  int
 }
 
 // Builds an index in which chunks can be found, with their corresponding offsets
@@ -51,15 +55,15 @@ type ChecksumIndex struct {
 func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
     n := &ChecksumIndex{
         BlockCount:         len(checksums),
-        weakChecksumLookup: make([]map[uint32]StrongChecksumList, 256),
+        weakChecksumLookup: make([]map[uint64]StrongChecksumList, 256),
     }
 
     for _, chunk := range checksums {
-        weakChecksumAsInt := binary.LittleEndian.Uint32(chunk.WeakChecksum)
-        arrayOffset := weakChecksumAsInt & 255
+        weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
+        arrayOffset := weakChecksumAsInt & indexOffsetFilter
 
         if n.weakChecksumLookup[arrayOffset] == nil {
-            n.weakChecksumLookup[arrayOffset] = make(map[uint32]StrongChecksumList)
+            n.weakChecksumLookup[arrayOffset] = make(map[uint64]StrongChecksumList)
         }
 
         n.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
@@ -84,7 +88,7 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
         }
     }
 
-    n.AverageStrongLength = float32(sum) / float32(count)
+    n.AverageStrongLength = float64(sum) / float64(count)
 
     return n
 }
@@ -94,9 +98,9 @@ func (index *ChecksumIndex) WeakCount() int {
 }
 
 func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) StrongChecksumList {
-    x := binary.LittleEndian.Uint32(weak)
-    if index.weakChecksumLookup[x&255] != nil {
-        if v, ok := index.weakChecksumLookup[x&255][x]; ok {
+    x := binary.LittleEndian.Uint64(weak)
+    if index.weakChecksumLookup[x & indexOffsetFilter] != nil {
+        if v, ok := index.weakChecksumLookup[x & indexOffsetFilter][x]; ok {
             return v
         }
     }

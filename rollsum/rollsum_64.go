@@ -24,9 +24,8 @@ func NewRollsum64(blocksize uint) *Rollsum64 {
     }
 }
 
-// Rollsum64 is a rolling checksum implemenation
-// inspired by rsync, but with 32bit internal values
-// Create one using NewRollsum32
+// Rollsum64 is a rolling checksum implemenation inspired by rsync, but with 64bit internal values
+// Create one using NewRollsum64
 type Rollsum64 struct {
     Rollsum64Base
     buffer *circularbuffer.C2

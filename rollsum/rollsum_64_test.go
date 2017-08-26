@@ -215,7 +215,7 @@ func BenchmarkRollsum64_16192(b *testing.B) {
 }
 
 func BenchmarkRollsum64Base(b *testing.B) {
-    r := Rollsum32Base{blockSize: 100}
+    r := Rollsum64Base{blockSize: 100}
     buffer := make([]byte, 100)
     checksum := make([]byte, 16)
     b.ReportAllocs()
@@ -230,7 +230,7 @@ func BenchmarkRollsum64Base(b *testing.B) {
 
 }
 
-// This is the benchmark where Rollsum should beat a full MD5 for each blocksize
+// This is the benchmark where Rollsum should beat a full RIPEMD-160 for each blocksize
 func BenchmarkIncrementalRollsum64(b *testing.B) {
     r := NewRollsum64(100)
     buffer := make([]byte, 100)
@@ -274,3 +274,23 @@ func BenchmarkIncrementalRollsum64WithC2(b *testing.B) {
     }
     b.StopTimer()
 }
+
+/*
+    (2017/08/26) bench between uint32 vs uint64
+    OK: 10 passed
+    BenchmarkRollsum32-8                    	10000000	       224 ns/op	 444.94 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum32_8096-8               	  100000	     16025 ns/op	 505.19 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum32Base-8                	10000000	       192 ns/op	 520.02 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum32-8         	50000000	        35.5 ns/op	  28.14 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum32WithC2-8   	50000000	        31.5 ns/op	  31.71 MB/s	       0 B/op	       0 allocs/op
+
+    BenchmarkRollsum64-8                    	10000000	       235 ns/op	 423.85 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum64_8096-8               	  100000	     17049 ns/op	 474.84 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum64_16192-8              	   50000	     34881 ns/op	 464.20 MB/s	       1 B/op	       0 allocs/op
+    BenchmarkRollsum64Base-8                	10000000	       205 ns/op	 485.58 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum64-8         	50000000	        34.6 ns/op	  28.92 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum64WithC2-8   	50000000	        29.5 ns/op	  33.89 MB/s	       0 B/op	       0 allocs/op
+
+    PASS
+    ok  	github.com/Redundancy/go-sync/rollsum	21.894s
+ */

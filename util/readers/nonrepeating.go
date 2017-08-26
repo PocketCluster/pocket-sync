@@ -1,35 +1,39 @@
 package readers
 
 import (
-	"encoding/binary"
-	"io"
+    "encoding/binary"
+    "io"
 )
 
-const nonRepeatingModulo = 87178291199
-const nonRepeatingIncrement = 17180131327
+const (
+	nonRepeatingModulo    = 87178291199
+	nonRepeatingIncrement = 17180131327
+)
 
 // *should* produce a non-repeating sequence of bytes in a deterministic fashion
 // use io.LimitReader to limit it to a specific length
 type nonRepeatingSequenceReader struct {
-	value int
+    value int
 }
 
 func NewNonRepeatingSequence(i int) io.Reader {
-	return &nonRepeatingSequenceReader{i}
+    return &nonRepeatingSequenceReader{i}
 }
 
 func NewSizedNonRepeatingSequence(i int, s int64) io.Reader {
-	return io.LimitReader(NewNonRepeatingSequence(i), s)
+    return io.LimitReader(NewNonRepeatingSequence(i), s)
 }
 
+// https://stackoverflow.com/questions/6268045/more-efficient-way-to-write-this-simple-python-non-sequential-number-generator
+// http://www.luschny.de/math/primes/SwingingPrimes.html
 func (r *nonRepeatingSequenceReader) Read(p []byte) (n int, err error) {
-	lenp := len(p)
-	b := []byte{1, 2, 3, 4}
+    lenp := len(p)
+    b := []byte{1, 2, 3, 4}
 
-	for i := 0; i < lenp; i++ {
-		binary.LittleEndian.PutUint32(b, uint32(r.value))
-		p[i] = b[0]
-		r.value = (r.value + nonRepeatingIncrement) % nonRepeatingModulo
-	}
-	return lenp, nil
+    for i := 0; i < lenp; i++ {
+        binary.LittleEndian.PutUint32(b, uint32(r.value))
+        p[i] = b[0]
+        r.value = (r.value + nonRepeatingIncrement) % nonRepeatingModulo
+    }
+    return lenp, nil
 }
