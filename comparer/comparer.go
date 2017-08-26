@@ -123,11 +123,9 @@ func (c *Comparer) startFindMatchingBlocks_int(
     rollingHash.SetBlock(block)
     blockMemory.Write(block)
 
-    var (
-        // All the bytes
-        i = int64(0)
-        next = READ_NEXT_BYTE
-    )
+    // All the bytes
+    i := int64(0)
+    next := READ_NEXT_BYTE
     //ReadLoop:
     for {
 

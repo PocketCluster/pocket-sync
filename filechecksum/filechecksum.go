@@ -138,6 +138,8 @@ func (check *FileChecksumGenerator) generate(
     inputFile io.Reader,
 ) {
 
+    defer close(resultChan)
+
     var (
         buffer = make([]byte, check.BlockSize())
         results = make([]chunks.ChunkChecksum, 0, blocksPerResult)
@@ -148,9 +150,6 @@ func (check *FileChecksumGenerator) generate(
         fullChecksum = check.GetFileHash()
         strongHash = check.GetStrongHash()
     )
-
-    // We close channel when it's done
-    defer close(resultChan)
 
     i := uint(0)
     for {
