@@ -13,12 +13,10 @@ import (
  * BlockSourceBase. This provides a simple way of implementing a particular
  */
 type BlockSourceRequester interface {
-    // This method is called on multiple goroutines, and must
-    // support simultaneous requests
+    // This method is called on multiple goroutines, and must support simultaneous requests
     DoRequest(startOffset int64, endOffset int64) (data []byte, err error)
 
-    // If an error raised by DoRequest should cause BlockSourceBase
-    // to give up, return true
+    // If an error raised by DoRequest should cause BlockSourceBase to give up, return true
     IsFatal(err error) bool
 }
 
@@ -65,11 +63,9 @@ func NewBlockSourceBase(
 }
 
 /*
- * BlockSourceBase provides an implementation of blocksource
- * that takes care of everything except for the actual asyncronous request
- * this makes blocksources easier and faster to build reliably
- * BlockSourceBase implements patcher.BlockSource, and if it's good enough,
- * perhaps nobody else ever will have to.
+ * BlockSourceBase provides an implementation of blocksource that takes care of everything except for the actual
+ * asyncronous request. this makes blocksources easier and faster to build reliably.
+ * BlockSourceBase implements patcher.BlockSource, and if it's good enough, perhaps nobody else ever will have to.
  */
 type BlockSourceBase struct {
     Requester           BlockSourceRequester
@@ -142,19 +138,21 @@ func (s *BlockSourceBase) loop() {
         close(s.responseChannel)
     }()
 
-    state := STATE_RUNNING
-    inflightRequests := 0
-    //inflightBytes := int64(0)
-    pendingErrors := &errorWatcher{errorChannel: s.errorChannel}
-    pendingResponse := &pendingResponseHelper{responseChannel: s.responseChannel}
-    resultChan := make(chan asyncResult)
+    var (
+        state = STATE_RUNNING
+        inflightRequests = 0
+        //inflightBytes = int64(0)
+        pendingErrors = &errorWatcher{errorChannel: s.errorChannel}
+        pendingResponse = &pendingResponseHelper{responseChannel: s.responseChannel}
+        resultChan = make(chan asyncResult)
+        requestQueue = make(QueuedRequestList, 0, s.ConcurrentRequests*2)
+
+        // enable us to order responses for the active requests, lowest to highest
+        requestOrdering = make(UintSlice, 0, s.ConcurrentRequests)
+        responseOrdering = make(PendingResponses, 0, s.ConcurrentRequests)
+    )
+
     defer close(resultChan)
-
-    requestQueue := make(QueuedRequestList, 0, s.ConcurrentRequests*2)
-
-    // enable us to order responses for the active requests, lowest to highest
-    requestOrdering := make(UintSlice, 0, s.ConcurrentRequests)
-    responseOrdering := make(PendingResponses, 0, s.ConcurrentRequests)
 
     for state == STATE_RUNNING || inflightRequests > 0 || pendingErrors.Err() != nil {
 
@@ -221,8 +219,8 @@ func (s *BlockSourceBase) loop() {
                     pendingErrors.setError(
                         fmt.Errorf(
                             "The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                            result.startBlockID, result.endBlockID,
-                        ))
+                            result.startBlockID,
+                            result.endBlockID))
                     pendingResponse.clear()
                     state = STATE_EXITING
                     break
