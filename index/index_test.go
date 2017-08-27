@@ -6,9 +6,9 @@ import (
 	"github.com/Redundancy/go-sync/chunks"
 )
 
-// Weak checksums must be 4 bytes
-var WEAK_A = []byte("aaaa")
-var WEAK_B = []byte("bbbb")
+// Weak checksums must be 8 bytes
+var WEAK_A = []byte("aaaaaaaa")
+var WEAK_B = []byte("bbbbbbbb")
 
 /*
 ChunkOffset uint
@@ -60,13 +60,13 @@ func TestWeakNotInIndex(t *testing.T) {
 		},
 	)
 
-	result := i.FindWeakChecksumInIndex([]byte("afgh"))
+	result := i.FindWeakChecksumInIndex([]byte("afghqocq"))
 
 	if result != nil {
 		t.Error("Result from FindWeakChecksumInIndex should be nil")
 	}
 
-	result2 := i.FindWeakChecksum2([]byte("afgh"))
+	result2 := i.FindWeakChecksum2([]byte("afghqocq"))
 
 	if result2 != nil {
 		t.Errorf("Result from FindWeakChecksum2 should be nil: %#v", result2)
@@ -82,7 +82,7 @@ func TestWeakNotInIndex2(t *testing.T) {
 		},
 	)
 
-	result := i.FindWeakChecksumInIndex([]byte("llll"))
+	result := i.FindWeakChecksumInIndex([]byte("llllllll"))
 
 	if result != nil {
 		t.Error("Result should be nil")

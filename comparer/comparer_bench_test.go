@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-var test = []byte{0, 1, 2, 3}
-
 type NegativeWeakIndex struct {
 }
 

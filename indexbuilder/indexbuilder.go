@@ -1,15 +1,16 @@
 /*
-Package indexbuilder provides a few shortbuts to building a checksum index by generating and then loading
-the checksums, and building an index from that. It's potentially a sign that the responsibilities here need refactoring.
+ * Package indexbuilder provides a few shortbuts to building a checksum index by generating and then loading
+ * the checksums, and building an index from that. It's potentially a sign that the responsibilities here need refactoring.
 */
 package indexbuilder
 
 import (
-	"bytes"
-	"github.com/Redundancy/go-sync/chunks"
-	"github.com/Redundancy/go-sync/filechecksum"
-	"github.com/Redundancy/go-sync/index"
+    "bytes"
 	"io"
+
+    "github.com/Redundancy/go-sync/chunks"
+    "github.com/Redundancy/go-sync/filechecksum"
+    "github.com/Redundancy/go-sync/index"
 )
 
 // Generates an index from a reader
@@ -19,37 +20,37 @@ import (
 // modules, which is not ideal.
 // TODO: move to util?
 func BuildChecksumIndex(check *filechecksum.FileChecksumGenerator, r io.Reader) (
-	fcheck []byte,
-	i *index.ChecksumIndex,
-	lookup filechecksum.ChecksumLookup,
-	err error,
+    fcheck []byte,
+    i *index.ChecksumIndex,
+    lookup filechecksum.ChecksumLookup,
+    err error,
 ) {
-	b := bytes.NewBuffer(nil)
-	fcheck, err = check.GenerateChecksums(r, b)
+    b := bytes.NewBuffer(nil)
+    fcheck, err = check.GenerateChecksums(r, b)
 
-	if err != nil {
-		return
-	}
+    if err != nil {
+        return
+    }
 
-	weakSize := check.WeakRollingHash.Size()
-	strongSize := check.GetStrongHash().Size()
-	readChunks, err := chunks.LoadChecksumsFromReader(b, weakSize, strongSize)
+    weakSize := check.GetWeakRollingHash().Size()
+    strongSize := check.GetStrongHash().Size()
+    readChunks, err := chunks.LoadChecksumsFromReader(b, weakSize, strongSize)
 
-	if err != nil {
-		return
-	}
+    if err != nil {
+        return
+    }
 
-	i = index.MakeChecksumIndex(readChunks)
-	lookup = chunks.StrongChecksumGetter(readChunks)
+    i = index.MakeChecksumIndex(readChunks)
+    lookup = chunks.StrongChecksumGetter(readChunks)
 
-	return
+    return
 }
 
 func BuildIndexFromString(generator *filechecksum.FileChecksumGenerator, reference string) (
-	fileCheckSum []byte,
-	referenceIndex *index.ChecksumIndex,
-	lookup filechecksum.ChecksumLookup,
-	err error,
+    fileCheckSum []byte,
+    referenceIndex *index.ChecksumIndex,
+    lookup filechecksum.ChecksumLookup,
+    err error,
 ) {
-	return BuildChecksumIndex(generator, bytes.NewBufferString(reference))
+    return BuildChecksumIndex(generator, bytes.NewBufferString(reference))
 }

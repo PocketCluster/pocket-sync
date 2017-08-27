@@ -1,14 +1,14 @@
 package filechecksum
 
 import (
-	"crypto/md5"
 	"testing"
+    "golang.org/x/crypto/ripemd160"
 )
 
 type SingleBlockSource []byte
 
 func (d SingleBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
-	m := md5.New()
+	m := ripemd160.New()
 	m.Write(d)
 	return m.Sum(nil)
 }
@@ -17,7 +17,7 @@ func TestBlockEqualsItself(t *testing.T) {
 	data := []byte("fooooo")
 
 	h := HashVerifier{
-		Hash:                md5.New(),
+		Hash:                ripemd160.New(),
 		BlockSize:           uint(len(data)),
 		BlockChecksumGetter: SingleBlockSource(data),
 	}
@@ -30,7 +30,7 @@ func TestBlockEqualsItself(t *testing.T) {
 type FourByteBlockSource []byte
 
 func (d FourByteBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
-	m := md5.New()
+	m := ripemd160.New()
 
 	start := blockID * 4
 	end := start + 4
@@ -47,7 +47,7 @@ func TestSplitBlocksEqualThemselves(t *testing.T) {
 	data := []byte("foooBaar")
 
 	h := HashVerifier{
-		Hash:                md5.New(),
+		Hash:                ripemd160.New(),
 		BlockSize:           uint(4),
 		BlockChecksumGetter: FourByteBlockSource(data),
 	}
@@ -61,7 +61,7 @@ func TestPartialBlock(t *testing.T) {
 	data := []byte("fo")
 
 	h := HashVerifier{
-		Hash:                md5.New(),
+		Hash:                ripemd160.New(),
 		BlockSize:           uint(4),
 		BlockChecksumGetter: SingleBlockSource(data),
 	}
