@@ -236,32 +236,36 @@ func TestOutOfOrderRequestCompletion(t *testing.T) {
     }
 }
 
-func testRequestCountLimiting(t *testing.T) {
-    counter := make(chan int)
-    waiter := make(chan bool)
+func TestRequestCountLimiting(t *testing.T) {
     const (
         MAX_CONCURRENCY = 2
         REQUESTS        = 4
     )
-    call_counter := 0
+    var (
+        counter      = make(chan int)
+        waiter       = make(chan bool)
+        call_counter = 0
+        count        = 0
+        max          = 0
 
-    b := NewBlockSourceBase(
-        FunctionRequester(func(start, end int64) (data []byte, err error) {
-            counter <- 1
-            call_counter += 1
-            <-waiter
-            counter <- -1
-            return []byte{0, 0}, nil
-        }),
-        MakeNullFixedSizeResolver(1),
-        nil,
-        MAX_CONCURRENCY,
-        1024,
+        b = NewBlockSourceBase(
+            FunctionRequester(func(start, end int64) (data []byte, err error) {
+                counter <- 1
+                call_counter += 1
+                <-waiter
+                counter <- -1
+                return []byte{0, 0}, nil
+            }),
+            MakeNullFixedSizeResolver(1),
+            nil,
+            MAX_CONCURRENCY,
+            1024,
+        )
     )
-    defer b.Close()
 
-    count := 0
-    max := 0
+//    defer close(counter)
+//    defer close(waiter)
+    defer b.Close()
 
     go func() {
         for {
@@ -290,10 +294,6 @@ func testRequestCountLimiting(t *testing.T) {
     for i := 0; i < REQUESTS; i++ {
         waiter <- true
     }
-
-    // FIXME : defering these two channel is only a temporary fix. We should root out the cause.
-    defer close(counter)
-    defer close(waiter)
 
     if max > MAX_CONCURRENCY {
         t.Errorf("Maximum requests in flight was greater than the requested concurrency: %v", max)
