@@ -138,17 +138,22 @@ func (s *BlockSourceBase) loop() {
     }()
 
     var (
-        state = STATE_RUNNING
-        inflightRequests = 0
-        //inflightBytes = int64(0)
-        pendingErrors = &errorWatcher{errorChannel: s.errorChannel}
-        pendingResponse = &pendingResponseHelper{responseChannel: s.responseChannel}
-        resultChan = make(chan asyncResult)
-        requestQueue = make(QueuedRequestList, 0, s.ConcurrentRequests*2)
+        state               = STATE_RUNNING
+        inflightRequests    = 0
+        //inflightBytes     = int64(0)
+
+        pendingErrors       = &errorWatcher{
+            errorChannel: s.errorChannel,
+        }
+        pendingResponse     = &pendingResponseHelper{
+            responseChannel: s.responseChannel,
+        }
+        resultChan          = make(chan asyncResult)
+        requestQueue        = make(QueuedRequestList, 0, s.ConcurrentRequests * 2)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering = make(UintSlice, 0, s.ConcurrentRequests)
-        responseOrdering = make(PendingResponses, 0, s.ConcurrentRequests)
+        requestOrdering     = make(UintSlice,         0, s.ConcurrentRequests)
+        responseOrdering    = make(PendingResponses,  0, s.ConcurrentRequests)
     )
 
     defer close(resultChan)
@@ -202,6 +207,7 @@ func (s *BlockSourceBase) loop() {
 
                 sort.Sort(sort.Reverse(requestQueue))
             }
+
             case result := <-resultChan: {
                 inflightRequests -= 1
 
