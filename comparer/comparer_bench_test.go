@@ -1,74 +1,75 @@
 package comparer
 
 import (
-	"github.com/Redundancy/go-sync/chunks"
-	"github.com/Redundancy/go-sync/filechecksum"
-	"github.com/Redundancy/go-sync/util/readers"
-	"testing"
+    "testing"
+
+    "github.com/Redundancy/go-sync/chunks"
+    "github.com/Redundancy/go-sync/filechecksum"
+    "github.com/Redundancy/go-sync/util/readers"
 )
 
 type NegativeWeakIndex struct {
 }
 
 func (i *NegativeWeakIndex) FindWeakChecksum2(chk []byte) interface{} {
-	return nil
+    return nil
 }
 
 func (i *NegativeWeakIndex) FindStrongChecksum2(chk []byte, weak interface{}) []chunks.ChunkChecksum {
-	return nil
+    return nil
 }
 
 type NegativeStrongIndex struct {
 }
 
 func (i *NegativeStrongIndex) FindWeakChecksum2(chk []byte) interface{} {
-	return i
+    return i
 }
 
 func (i *NegativeStrongIndex) FindStrongChecksum2(chk []byte, weak interface{}) []chunks.ChunkChecksum {
-	return nil
+    return nil
 }
 
 func BenchmarkWeakComparison(b *testing.B) {
-	b.ReportAllocs()
-	b.SetBytes(1)
+    b.ReportAllocs()
+    b.SetBytes(1)
 
-	const BLOCK_SIZE = 8
-	generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
+    const BLOCK_SIZE = 8
+    generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
 
-	b.StartTimer()
+    b.StartTimer()
 
-	results := (&Comparer{}).StartFindMatchingBlocks(
-		readers.OneReader(b.N+BLOCK_SIZE),
-		0,
-		generator,
-		&NegativeWeakIndex{},
-	)
+    results := (&Comparer{}).StartFindMatchingBlocks(
+        readers.OneReader(b.N+BLOCK_SIZE),
+        0,
+        generator,
+        &NegativeWeakIndex{},
+    )
 
-	for _, ok := <-results; ok; {
-	}
+    for _, ok := <-results; ok; {
+    }
 
-	b.StopTimer()
+    b.StopTimer()
 }
 
 func BenchmarkStrongComparison(b *testing.B) {
-	b.ReportAllocs()
-	b.SetBytes(1)
+    b.ReportAllocs()
+    b.SetBytes(1)
 
-	const BLOCK_SIZE = 8
-	generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
+    const BLOCK_SIZE = 8
+    generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
 
-	b.StartTimer()
+    b.StartTimer()
 
-	results := (&Comparer{}).StartFindMatchingBlocks(
-		readers.OneReader(b.N+BLOCK_SIZE),
-		0,
-		generator,
-		&NegativeStrongIndex{},
-	)
+    results := (&Comparer{}).StartFindMatchingBlocks(
+        readers.OneReader(b.N+BLOCK_SIZE),
+        0,
+        generator,
+        &NegativeStrongIndex{},
+    )
 
-	for _, ok := <-results; ok; {
-	}
+    for _, ok := <-results; ok; {
+    }
 
-	b.StopTimer()
+    b.StopTimer()
 }

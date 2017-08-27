@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	nonRepeatingModulo    = 87178291199
-	nonRepeatingIncrement = 17180131327
+    nonRepeatingModulo    = 87178291199
+    nonRepeatingIncrement = 17180131327
 )
 
 // *should* produce a non-repeating sequence of bytes in a deterministic fashion

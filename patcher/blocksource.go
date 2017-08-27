@@ -47,7 +47,7 @@ type MissingBlockSpan struct {
 
     BlockSize   int64
     // a hasher to use to ensure that the block response matches
-    Hasher 		hash.Hash
+    Hasher 	    hash.Hash
     // the hash values that the blocks should have
     ExpectedSums [][]byte
 }
