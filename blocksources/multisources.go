@@ -1,4 +1,4 @@
-package multisources
+package blocksources
 
 import (
     "sort"
@@ -7,7 +7,6 @@ import (
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
 )
-
 
 /*
  * MultiSourcesBase takes
