@@ -30,8 +30,7 @@ func (r *FixedSizeBlockResolver) SplitBlockRangeToDesiredSize(startBlockID, endB
             QueuedRequest{
                 StartBlockID: startBlockID,
                 EndBlockID:   endBlockID,
-            },
-        }
+            }}
     }
 
     maxSize := r.MaxDesiredRequestSize
@@ -54,18 +53,17 @@ func (r *FixedSizeBlockResolver) SplitBlockRangeToDesiredSize(startBlockID, endB
                 QueuedRequest{
                     StartBlockID: currentBlockID,
                     EndBlockID:   endBlockID,
-                },
-            )
+                })
 
             return requests
+
         } else {
             requests = append(
                 requests,
                 QueuedRequest{
                     StartBlockID: currentBlockID,
                     EndBlockID:   maxEndBlock - 1,
-                },
-            )
+                })
 
             currentBlockID = maxEndBlock
         }
