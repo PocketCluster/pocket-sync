@@ -62,6 +62,13 @@ func NewBlockSourceBase(
     return b
 }
 
+const (
+    STATE_RUNNING       = iota
+    STATE_EXITING
+)
+
+var BlockSourceAlreadyClosedError = errors.New("Block source was already closed")
+
 /*
  * BlockSourceBase provides an implementation of blocksource that takes care of everything except for the actual
  * asyncronous request. this makes blocksources easier and faster to build reliably.
@@ -73,25 +80,19 @@ type BlockSourceBase struct {
     Verifier            BlockVerifier
 
     // The number of requests that BlockSourceBase may service at once
-    ConcurrentRequests int
+    ConcurrentRequests  int
 
-    // The number of bytes that BlockSourceBase may have in-flight
-    // (requested + pending delivery)
-    ConcurrentBytes int64
+    // The number of bytes that BlockSourceBase may have in-flight (requested + pending delivery)
+    ConcurrentBytes     int64
 
-    hasQuit         bool
-    exitChannel     chan bool
-    errorChannel    chan error
-    responseChannel chan patcher.BlockReponse
-    requestChannel  chan patcher.MissingBlockSpan
+    hasQuit             bool
+    exitChannel         chan bool
+    errorChannel        chan error
+    responseChannel     chan patcher.BlockReponse
+    requestChannel      chan patcher.MissingBlockSpan
 
-    bytesRequested int64
+    bytesRequested      int64
 }
-
-const (
-    STATE_RUNNING = iota
-    STATE_EXITING
-)
 
 func (s *BlockSourceBase) ReadBytes() int64 {
     return s.bytesRequested
@@ -110,8 +111,6 @@ func (s *BlockSourceBase) GetResultChannel() <-chan patcher.BlockReponse {
 func (s *BlockSourceBase) EncounteredError() <-chan error {
     return s.errorChannel
 }
-
-var BlockSourceAlreadyClosedError = errors.New("Block source was already closed")
 
 func (s *BlockSourceBase) Close() (err error) {
     // if it has already been closed, just recover
