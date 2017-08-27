@@ -2,12 +2,12 @@ package sequential
 
 import (
     "bytes"
-    "crypto/md5"
     "io"
     "io/ioutil"
     "strings"
     "testing"
 
+    "golang.org/x/crypto/ripemd160"
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/patcher"
 )
@@ -26,7 +26,7 @@ var (
 
 func init() {
     maxLen := len(REFERENCE_STRING)
-    m := md5.New()
+    m := ripemd160.New()
     for i := 0; i < maxLen; i += BLOCKSIZE {
         last := i + 4
 
@@ -58,7 +58,7 @@ func TestPatchingStart(t *testing.T) {
             BlockSize:    BLOCKSIZE,
             StartBlock:   0,
             EndBlock:     2,
-            Hasher:       md5.New(),
+            Hasher:       ripemd160.New(),
             ExpectedSums: REFERENCE_HASHES[0:3],
         },
     }
@@ -108,7 +108,7 @@ func TestPatchingEnd(t *testing.T) {
             BlockSize:    BLOCKSIZE,
             StartBlock:   9,
             EndBlock:     10,
-            Hasher:       md5.New(),
+            Hasher:       ripemd160.New(),
             ExpectedSums: REFERENCE_HASHES[0:3],
         },
     }
@@ -156,7 +156,7 @@ func TestPatchingEntirelyMissing(t *testing.T) {
             BlockSize:    BLOCKSIZE,
             StartBlock:   0,
             EndBlock:     10,
-            Hasher:       md5.New(),
+            Hasher:       ripemd160.New(),
             ExpectedSums: REFERENCE_HASHES[0:10],
         },
     }

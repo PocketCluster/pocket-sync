@@ -14,6 +14,16 @@ import (
     "github.com/Redundancy/go-sync/rollsum"
 )
 
+// this is a factory function, because we don't actually want to share hash state
+func DefaultStrongHashGenerator() hash.Hash {
+    return ripemd160.New()
+}
+
+// We provide an overall hash of individual files
+func DefaultFileHashGenerator() hash.Hash {
+    return ripemd160.New()
+}
+
 // Uses all default hashes (RIPEMD-160 & RollSum64)
 func NewFileChecksumGenerator(blocksize uint) *FileChecksumGenerator {
     return &FileChecksumGenerator{
@@ -68,21 +78,21 @@ func (check *FileChecksumGenerator) GetWeakRollingHash() RollingHash {
 }
 
 /*
- * Gets the fresh, clean Hash function for the overall file used on each block
- * We provide an overall hash of individual files
- * defaults to RipeMD-160
- */
-func (check *FileChecksumGenerator) GetFileHash() hash.Hash {
-    return ripemd160.New()
-}
-
-/*
  * Gets the fresh, clean Hash function for the strong hash used on each block
  * This is a factory function, because we don't actually want to share hash state
  * defaults to RipeMD-160
  */
 func (check *FileChecksumGenerator) GetStrongHash() hash.Hash {
-    return ripemd160.New()
+    return DefaultStrongHashGenerator()
+}
+
+/*
+ * Gets the fresh, clean Hash function for the overall file used on each block
+ * We provide an overall hash of individual files
+ * defaults to RipeMD-160
+ */
+func (check *FileChecksumGenerator) GetFileHash() hash.Hash {
+    return DefaultFileHashGenerator()
 }
 
 /*

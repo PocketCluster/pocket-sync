@@ -2,7 +2,6 @@ package gosync
 
 import (
 	"bufio"
-	"crypto/md5"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -146,7 +145,7 @@ func MakeRSync(
 		DefaultConcurrency,
 		resolver,
 		&filechecksum.HashVerifier{
-			Hash:                md5.New(),
+			Hash:                filechecksum.DefaultFileHashGenerator(),
 			BlockSize:           Summary.GetBlockSize(),
 			BlockChecksumGetter: Summary,
 		},

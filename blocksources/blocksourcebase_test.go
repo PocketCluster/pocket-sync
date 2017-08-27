@@ -236,7 +236,7 @@ func TestOutOfOrderRequestCompletion(t *testing.T) {
     }
 }
 
-func TestRequestCountLimiting(t *testing.T) {
+func testRequestCountLimiting(t *testing.T) {
     counter := make(chan int)
     waiter := make(chan bool)
     const (

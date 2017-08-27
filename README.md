@@ -113,7 +113,7 @@ In terms of the CLI tool, this probably means that gosync should build a version
 Given a known original version, and a known desired state, it would be possible to create a "patch", which has enough information to store the required blocks for the transformation only, and only enough of the index to validate that it's transforming the correct file.
 
 #### Patched file Validation - Feature (!)
-GoSync should validate the full MD5 and length of a file after it is done with patching it. This should be minimally expensive, and help increase confidence that GoSync has produced the correct result.
+GoSync should validate the full RipeMD-160 and length of a file after it is done with patching it. This should be minimally expensive, and help increase confidence that GoSync has produced the correct result.
 
 This one is pretty simple. :)
 

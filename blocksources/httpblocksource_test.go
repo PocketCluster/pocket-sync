@@ -2,7 +2,6 @@ package blocksources
 
 import (
     "bytes"
-    "crypto/md5"
     "fmt"
     "net"
     "net/http"
@@ -13,29 +12,31 @@ import (
     "github.com/Redundancy/go-sync/patcher"
 )
 
-var PORT = 8000
+var (
+    PORT = 8000
 
-var TEST_CONTENT = []byte("This is test content used for evaluation of the unit tests")
-var content = bytes.NewReader(TEST_CONTENT)
-var LOCAL_URL = ""
+    TEST_CONTENT = []byte("This is test content used for evaluation of the unit tests")
+    content = bytes.NewReader(TEST_CONTENT)
+    LOCAL_URL = ""
 
-func handler(w http.ResponseWriter, req *http.Request) {
-    http.ServeContent(w, req, "", time.Now(), content)
-}
+    handler = func (w http.ResponseWriter, req *http.Request) {
+        http.ServeContent(w, req, "", time.Now(), content)
+    }
 
-var PARTIAL_CONTENT = []byte("abcdef")
-var partialContent = bytes.NewReader(PARTIAL_CONTENT)
+    PARTIAL_CONTENT = []byte("abcdef")
+    partialContent = bytes.NewReader(PARTIAL_CONTENT)
 
-func partialContentHandler(w http.ResponseWriter, req *http.Request) {
-    http.ServeContent(w, req, "", time.Now(), partialContent)
-}
+    partialContentHandler = func(w http.ResponseWriter, req *http.Request) {
+        http.ServeContent(w, req, "", time.Now(), partialContent)
+    }
 
-var CORRUPT_CONTENT = []byte("sfdfsfhhrtertert sffsfsdfsdfsdf")
-var corruptContent = bytes.NewReader(CORRUPT_CONTENT)
+    CORRUPT_CONTENT = []byte("sfdfsfhhrtertert sffsfsdfsdfsdf")
+    corruptContent = bytes.NewReader(CORRUPT_CONTENT)
 
-func corruptContentHandler(w http.ResponseWriter, req *http.Request) {
-    http.ServeContent(w, req, "", time.Now(), corruptContent)
-}
+    corruptContentHandler = func(w http.ResponseWriter, req *http.Request) {
+        http.ServeContent(w, req, "", time.Now(), corruptContent)
+    }
+)
 
 // set up a http server locally that will respond predictably to ranged requests
 // NB: Doing this will prevent deadlocks from being caught!
@@ -215,7 +216,7 @@ func TestHttpBlockSourcePartialContentRequest(t *testing.T) {
 type SingleBlockSource []byte
 
 func (d SingleBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
-    m := md5.New()
+    m := filechecksum.DefaultStrongHashGenerator()
     return m.Sum(d)
 }
 
@@ -227,7 +228,7 @@ func TestHttpBlockSourceVerification(t *testing.T) {
         2,
         MakeNullFixedSizeResolver(BLOCK_SIZE),
         &filechecksum.HashVerifier{
-            Hash:                md5.New(),
+            Hash:                filechecksum.DefaultFileHashGenerator(),
             BlockSize:           BLOCK_SIZE,
             BlockChecksumGetter: SingleBlockSource(TEST_CONTENT[0:BLOCK_SIZE]),
         },

@@ -2,7 +2,6 @@ package gosync
 
 import (
 	"bytes"
-	"crypto/md5"
 	"fmt"
 	"net"
 	"net/http"
@@ -114,7 +113,7 @@ func Example_httpBlockSource() {
 			1,
 			resolver,
 			&filechecksum.HashVerifier{
-				Hash:                md5.New(),
+				Hash:                filechecksum.DefaultFileHashGenerator(),
 				BlockSize:           fs.GetBlockSize(),
 				BlockChecksumGetter: fs,
 			},
