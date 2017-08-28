@@ -219,8 +219,7 @@ func (b *BlockRepositoryBase) loopReorder() {
                 // sort high to low
                 sort.Sort(sort.Reverse(responseOrdering))
 
-                // if we just got the lowest requested block, we can set
-                // the response. Otherwise, wait.
+                // if we just got the lowest requested block, we can set the response. Otherwise, wait.
                 lowestRequest := requestOrdering[len(requestOrdering)-1]
 
                 if lowestRequest == result.startBlockID {

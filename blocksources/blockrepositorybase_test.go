@@ -163,9 +163,9 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
     }
 }
 
-func test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
+func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
     const (
-        REQUESTS        = 4
+        REQUESTS     = 4
     )
     var (
         call_counter = 0
@@ -189,15 +189,12 @@ func test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
             nil,
         )
     )
-    t.Logf("deferred close calls")
     defer func() {
         b.Close()
         close(exitC)
         close(counter)
         close(waiter)
     }()
-
-    t.Logf("goroutine to count requests")
     go func() {
         for {
             select {
@@ -206,7 +203,7 @@ func test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
                 }
                 case change, ok := <-counter: {
                     if !ok {
-                        break
+                        return
                     }
 
                     count += change
@@ -221,20 +218,19 @@ func test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
     }()
 
     for i := 0; i < REQUESTS; i++ {
-        t.Logf("make %dth request ", i)
+        t.Logf("RequestBlocks %d", i)
         b.RequestBlocks(patcher.MissingBlockSpan{
             BlockSize:  1,
             StartBlock: uint(i),
             EndBlock:   uint(i),
         })
-    }
 
-    for i := 0; i < REQUESTS; i++ {
         waiter <- true
-    }
+        <-b.GetResultChannel()
 
-    if max > 1 {
-        t.Errorf("Maximum requests in flight was greater than the requested concurrency: %v", max)
+        if max > 1 {
+            t.Errorf("Maximum requests in flight was greater than the requested concurrency: %v", max)
+        }
     }
     if call_counter != REQUESTS {
         t.Errorf("Total number of requests is not expected: %v", call_counter)
