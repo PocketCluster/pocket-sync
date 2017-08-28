@@ -2,10 +2,8 @@ package blocksources
 
 import (
     "bytes"
-    "sync"
     "testing"
     "time"
-
 
     "github.com/Redundancy/go-sync/patcher"
 )
@@ -13,16 +11,12 @@ import (
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(nil, nil, nil)
-        wg sync.WaitGroup
     )
-    // start patching
-    wg.Add(1)
-    go func() {b.Patch();wg.Done()}()
 
-    // close repository
-    time.Sleep(1)
-    go func() {b.Close()}()
-    wg.Wait()
+    err := b.Close()
+    if err != nil {
+        t.Error(err.Error())
+    }
 
     if !b.hasQuit {
         t.Fatal("Block source base did not exit")
@@ -35,7 +29,6 @@ func Test_BlockRepositoryBase_Error(t *testing.T) {
         MakeNullFixedSizeResolver(4),
         nil,
     )
-    go func() {b.Patch()}()
     defer b.Close()
 
     b.RequestBlocks(patcher.MissingBlockSpan{
@@ -63,7 +56,6 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
             nil,
         )
     )
-    go func() {b.Patch()}()
     defer b.Close()
 
     b.RequestBlocks(patcher.MissingBlockSpan{
@@ -94,7 +86,6 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
             nil,
         )
     )
-    go func() {b.Patch()}()
     defer b.Close()
 
     b.RequestBlocks(patcher.MissingBlockSpan{
@@ -127,7 +118,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
 }
 
 
-func Test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
+func test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
     var (
         content = []byte("test")
 
@@ -146,8 +137,13 @@ func Test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
             nil,
         )
     )
-    go func() {b.Patch()}()
     defer b.Close()
+
+    b.RequestBlocks(patcher.MissingBlockSpan{
+        BlockSize:  1,
+        StartBlock: 0,
+        EndBlock:   0,
+    })
 
     b.RequestBlocks(patcher.MissingBlockSpan{
         BlockSize:  1,
@@ -163,12 +159,6 @@ func Test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
             t.Error("Should not deliver any blocks yet")
         case <-time.After(time.Second):
     }
-
-    b.RequestBlocks(patcher.MissingBlockSpan{
-        BlockSize:  1,
-        StartBlock: 0,
-        EndBlock:   0,
-    })
 
     // once the first block completes, we're ready to send both
     channeler[0] <- true
@@ -189,21 +179,22 @@ func Test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
     }
 }
 
-
-func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
+func test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
     const (
         REQUESTS        = 4
     )
     var (
-        counter      = make(chan int)
-        waiter       = make(chan bool)
-        exitC        = make(chan struct{})
         call_counter = 0
         count        = 0
         max          = 0
 
+        counter      = make(chan int)
+        waiter       = make(chan bool)
+        exitC        = make(chan struct{})
+
         b = NewBlockRepositoryBase(
             FunctionRequester(func(start, end int64) (data []byte, err error) {
+                t.Logf("FunctionRequester start %d", start)
                 counter <- 1
                 call_counter += 1
                 <-waiter
@@ -214,7 +205,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
             nil,
         )
     )
-    go func() {b.Patch()}()
+    t.Logf("deferred close calls")
     defer func() {
         b.Close()
         close(exitC)
@@ -222,6 +213,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
         close(waiter)
     }()
 
+    t.Logf("goroutine to count requests")
     go func() {
         for {
             select {
@@ -245,6 +237,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
     }()
 
     for i := 0; i < REQUESTS; i++ {
+        t.Logf("make %dth request ", i)
         b.RequestBlocks(patcher.MissingBlockSpan{
             BlockSize:  1,
             StartBlock: uint(i),
