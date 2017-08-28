@@ -67,19 +67,10 @@ func (b *BlockRepositoryBase) EncounteredError() <-chan error {
     return b.errorChannel
 }
 
+// Close function has to be super simple.
+// If something goes wrong after closing the exitChannel, it's caller's fault.
 func (b *BlockRepositoryBase) Close() (err error) {
-    // if it has already been closed, just recover
-    // however, let the caller know
-    defer func() {
-        if recover() != nil {
-            err = BlockSourceAlreadyClosedError
-        }
-    }()
-
-    if !b.hasQuit {
-        b.exitChannel <- true
-    }
-
+    close(b.exitChannel)
     return
 }
 
@@ -103,7 +94,6 @@ func (b *BlockRepositoryBase) Patch() {
 
     defer func() {
         b.hasQuit = true
-        close(b.exitChannel)
         close(b.errorChannel)
         close(b.requestChannel)
         close(b.responseChannel)
@@ -115,6 +105,7 @@ func (b *BlockRepositoryBase) Patch() {
         select {
             case <-b.exitChannel: {
                 state = STATE_EXITING
+                return
             }
 
             case newRequest := <-b.requestChannel: {
@@ -179,6 +170,9 @@ func (b *BlockRepositoryBase) Patch() {
                     err:          err,
                 }
 
+                // remove dispatched request
+                requestQueue = requestQueue[:len(requestQueue)-1]
+
                 // TODO : add retry here and reject
                 if result.err != nil {
                     pendingErrors.setError(result.err)
@@ -186,9 +180,6 @@ func (b *BlockRepositoryBase) Patch() {
                     state = STATE_EXITING
                     break
                 }
-
-                // remove dispatched request
-                requestQueue = requestQueue[:len(requestQueue)-1]
 
                 b.bytesRequested += int64(len(result.data))
 
