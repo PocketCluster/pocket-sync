@@ -1,28 +1,30 @@
 package blocksources
 
 import (
+    "fmt"
     "sort"
 
-    log "github.com/Sirupsen/logrus"
-    "github.com/pkg/errors"
+//    log "github.com/Sirupsen/logrus"
+//    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
-    "fmt"
 )
 
 /*
- * SingleBlockRepository provides an implementation of blocksource that takes care of every aspect of block handling
- * from a repository except for the actual syncronous request. It is vastly similar to BlockSourceBase but differs in
- * which detailed aspects (cancle, progress, & etc) of only single request managed in monotonous, synchronous manner.
+ * BlockRepositoryBase provides an implementation of blocksource that takes care of every aspect of block handling from
+ * a single repository except for the actual syncronous request.
+
+ * It is vastly similar to BlockSourceBase but differs in which detailed aspects (cancle, progress, & etc) of only
+ * single request managed in monotonous, synchronous manner.
  *
- * SingleBlockRepository implements patcher.BlockSource.
+ * BlockRepositoryBase implements patcher.BlockSource.
  */
 
-func NewSingleBlockRepository(
+func NewBlockRepositoryBase(
     requester    BlockSourceRequester,
     resolver     BlockSourceOffsetResolver,
     verifier     BlockVerifier,
-) *SingleBlockRepository {
-    return &SingleBlockRepository{
+) *BlockRepositoryBase {
+    return &BlockRepositoryBase{
         Requester:           requester,
         BlockSourceResolver: resolver,
         Verifier:            verifier,
@@ -33,7 +35,7 @@ func NewSingleBlockRepository(
     }
 }
 
-type SingleBlockRepository struct {
+type BlockRepositoryBase struct {
     Requester              BlockSourceRequester
     BlockSourceResolver    BlockSourceOffsetResolver
     Verifier               BlockVerifier
@@ -47,25 +49,25 @@ type SingleBlockRepository struct {
     bytesRequested         int64
 }
 
-func (s *SingleBlockRepository) ReadBytes() int64 {
-    return s.bytesRequested
+func (b *BlockRepositoryBase) ReadBytes() int64 {
+    return b.bytesRequested
 }
 
-func (s *SingleBlockRepository) RequestBlocks(block patcher.MissingBlockSpan) error {
-    s.requestChannel <- block
+func (b *BlockRepositoryBase) RequestBlocks(block patcher.MissingBlockSpan) error {
+    b.requestChannel <- block
     return nil
 }
 
-func (s *SingleBlockRepository) GetResultChannel() <-chan patcher.BlockReponse {
-    return s.responseChannel
+func (b *BlockRepositoryBase) GetResultChannel() <-chan patcher.BlockReponse {
+    return b.responseChannel
 }
 
 // If the block source encounters an unsurmountable problem
-func (s *SingleBlockRepository) EncounteredError() <-chan error {
-    return s.errorChannel
+func (b *BlockRepositoryBase) EncounteredError() <-chan error {
+    return b.errorChannel
 }
 
-func (s *SingleBlockRepository) Close() (err error) {
+func (b *BlockRepositoryBase) Close() (err error) {
     // if it has already been closed, just recover
     // however, let the caller know
     defer func() {
@@ -74,22 +76,22 @@ func (s *SingleBlockRepository) Close() (err error) {
         }
     }()
 
-    if !s.hasQuit {
-        s.exitChannel <- true
+    if !b.hasQuit {
+        b.exitChannel <- true
     }
 
     return
 }
 
-func (s *SingleBlockRepository) Patch() {
+func (b *BlockRepositoryBase) Patch() {
     var (
         state               = STATE_RUNNING
 
         pendingErrors       = &errorWatcher{
-            errorChannel: s.errorChannel,
+            errorChannel: b.errorChannel,
         }
         pendingResponse     = &pendingResponseHelper{
-            responseChannel: s.responseChannel,
+            responseChannel: b.responseChannel,
         }
         resultChan          = make(chan asyncResult)
 
@@ -100,25 +102,25 @@ func (s *SingleBlockRepository) Patch() {
     )
 
     defer func() {
-        s.hasQuit = true
-        close(s.exitChannel)
-        close(s.errorChannel)
-        close(s.requestChannel)
-        close(s.responseChannel)
+        b.hasQuit = true
+        close(b.exitChannel)
+        close(b.errorChannel)
+        close(b.requestChannel)
+        close(b.responseChannel)
         close(resultChan)
     }()
 
     for state == STATE_RUNNING || pendingErrors.Err() != nil {
 
         select {
-            case <-s.exitChannel: {
+            case <-b.exitChannel: {
                 state = STATE_EXITING
             }
 
-            case newRequest := <-s.requestChannel: {
+            case newRequest := <-b.requestChannel: {
                 requestQueue = append(
                     requestQueue,
-                    s.BlockSourceResolver.SplitBlockRangeToDesiredSize(
+                    b.BlockSourceResolver.SplitBlockRangeToDesiredSize(
                         newRequest.StartBlock,
                         newRequest.EndBlock,
                     )...)
@@ -157,15 +159,15 @@ func (s *SingleBlockRepository) Patch() {
                 requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
                 sort.Sort(sort.Reverse(requestOrdering))
 
-                startOffset := s.BlockSourceResolver.GetBlockStartOffset(
+                startOffset := b.BlockSourceResolver.GetBlockStartOffset(
                     nextRequest.StartBlockID,
                 )
 
-                endOffset := s.BlockSourceResolver.GetBlockEndOffset(
+                endOffset := b.BlockSourceResolver.GetBlockEndOffset(
                     nextRequest.EndBlockID,
                 )
 
-                response, err := s.Requester.DoRequest(
+                response, err := b.Requester.DoRequest(
                     startOffset,
                     endOffset,
                 )
@@ -188,9 +190,9 @@ func (s *SingleBlockRepository) Patch() {
                 // remove dispatched request
                 requestQueue = requestQueue[:len(requestQueue)-1]
 
-                s.bytesRequested += int64(len(result.data))
+                b.bytesRequested += int64(len(result.data))
 
-                if s.Verifier != nil && !s.Verifier.VerifyBlockRange(result.startBlockID, result.data) {
+                if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.startBlockID, result.data) {
                     pendingErrors.setError(
                         fmt.Errorf(
                             "The returned block range (%v-%v) did not match the expected checksum for the blocks",
@@ -210,7 +212,6 @@ func (s *SingleBlockRepository) Patch() {
                 // sort high to low
                 sort.Sort(sort.Reverse(responseOrdering))
 
-                // ???? what situation do we fall in this?
                 // if we just got the lowest requested block, we can set
                 // the response. Otherwise, wait.
                 lowestRequest := requestOrdering[len(requestOrdering)-1]
