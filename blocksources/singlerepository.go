@@ -84,7 +84,6 @@ func (s *SingleBlockRepository) Close() (err error) {
 func (s *SingleBlockRepository) Patch() {
     var (
         state               = STATE_RUNNING
-        inflightRequests    = 0
 
         pendingErrors       = &errorWatcher{
             errorChannel: s.errorChannel,
@@ -93,11 +92,11 @@ func (s *SingleBlockRepository) Patch() {
             responseChannel: s.responseChannel,
         }
         resultChan          = make(chan asyncResult)
-        requestQueue        = make(QueuedRequestList, 0, s.ConcurrentRequests * 2)
 
+        requestQueue        = make(QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(UintSlice,         0, s.ConcurrentRequests)
-        responseOrdering    = make(PendingResponses,  0, s.ConcurrentRequests)
+        requestOrdering     = make(UintSlice,         0, 1)
+        responseOrdering    = make(PendingResponses,  0, 1)
     )
 
     defer func() {
@@ -109,8 +108,7 @@ func (s *SingleBlockRepository) Patch() {
         close(resultChan)
     }()
 
-
-    for state == STATE_RUNNING || inflightRequests > 0 || pendingErrors.Err() != nil {
+    for state == STATE_RUNNING || pendingErrors.Err() != nil {
 
         select {
             case <-s.exitChannel: {
@@ -179,15 +177,16 @@ func (s *SingleBlockRepository) Patch() {
                     err:          err,
                 }
 
-                // remove dispatched request
-                requestQueue = requestQueue[:len(requestQueue)-1]
-
+                // TODO : add retry here and reject
                 if result.err != nil {
                     pendingErrors.setError(result.err)
                     pendingResponse.clear()
                     state = STATE_EXITING
                     break
                 }
+
+                // remove dispatched request
+                requestQueue = requestQueue[:len(requestQueue)-1]
 
                 s.bytesRequested += int64(len(result.data))
 
