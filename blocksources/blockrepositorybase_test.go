@@ -117,8 +117,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
     }
 }
 
-
-func test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
+func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
     var (
         content = []byte("test")
 
@@ -139,31 +138,16 @@ func test_BlockRepositoryBase_OutOfOrderRequestCompletion(t *testing.T) {
     )
     defer b.Close()
 
-    b.RequestBlocks(patcher.MissingBlockSpan{
-        BlockSize:  1,
-        StartBlock: 0,
-        EndBlock:   0,
-    })
-
-    b.RequestBlocks(patcher.MissingBlockSpan{
-        BlockSize:  1,
-        StartBlock: 1,
-        EndBlock:   1,
-    })
-
-    // finish the second request
-    channeler[1] <- true
-
-    select {
-        case <-b.GetResultChannel():
-            t.Error("Should not deliver any blocks yet")
-        case <-time.After(time.Second):
-    }
-
-    // once the first block completes, we're ready to send both
-    channeler[0] <- true
-
     for i := uint(0); i < 2; i++ {
+
+        b.RequestBlocks(patcher.MissingBlockSpan{
+            BlockSize:  1,
+            StartBlock: i,
+            EndBlock:   i,
+        })
+
+        channeler[i] <- true
+
         select {
             case r := <-b.GetResultChannel():
                 if r.StartBlock != i {
