@@ -74,10 +74,9 @@ func TestPatchingStart(t *testing.T) {
     }
 
     repos := []patcher.BlockRepository{
-        blockrepository.NewBlockRepositoryBase(
-            nil,
+        blockrepository.NewReadSeekerBlockRepository(
+            stringToReadSeeker(REFERENCE_STRING),
             blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-            nil,
         ),
     }
 
@@ -89,7 +88,11 @@ func TestPatchingStart(t *testing.T) {
         1024,
         out,
     )
+    if err != nil {
+        t.Fatal(err)
+    }
 
+    err = src.Patch()
     if err != nil {
         t.Fatal(err)
     }
@@ -104,7 +107,7 @@ func TestPatchingStart(t *testing.T) {
     }
 }
 
-func TestPatchingEnd(t *testing.T) {
+func Test_PatchingEnd(t *testing.T) {
     LOCAL := bytes.NewReader([]byte("The quick brown fox jumped over the l4zy d0g"))
     out := bytes.NewBuffer(nil)
 
@@ -127,18 +130,26 @@ func TestPatchingEnd(t *testing.T) {
         },
     }
 
-    err := SequentialPatcher(
-        LOCAL,
-        blocksources.NewReadSeekerBlockSource(
+    repos := []patcher.BlockRepository{
+        blockrepository.NewReadSeekerBlockRepository(
             stringToReadSeeker(REFERENCE_STRING),
             blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
         ),
+    }
+
+    src, err := NewMultiSourcePatcher(
+        LOCAL,
+        repos,
         missing,
         matched,
         1024,
         out,
     )
+    if err != nil {
+        t.Fatal(err)
+    }
 
+    err = src.Patch()
     if err != nil {
         t.Fatal(err)
     }
@@ -152,7 +163,7 @@ func TestPatchingEnd(t *testing.T) {
     }
 }
 
-func TestPatchingEntirelyMissing(t *testing.T) {
+func Test_PatchingEntirelyMissing(t *testing.T) {
     LOCAL := bytes.NewReader([]byte(""))
     out := bytes.NewBuffer(nil)
 
@@ -168,18 +179,26 @@ func TestPatchingEntirelyMissing(t *testing.T) {
 
     matched := []patcher.FoundBlockSpan{}
 
-    err := SequentialPatcher(
-        LOCAL,
-        blocksources.NewReadSeekerBlockSource(
+    repos := []patcher.BlockRepository{
+        blockrepository.NewReadSeekerBlockRepository(
             stringToReadSeeker(REFERENCE_STRING),
             blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
         ),
+    }
+
+    src, err := NewMultiSourcePatcher(
+        LOCAL,
+        repos,
         missing,
         matched,
         1024,
         out,
     )
+    if err != nil {
+        t.Fatal(err)
+    }
 
+    err = src.Patch()
     if err != nil {
         t.Fatal(err)
     }
