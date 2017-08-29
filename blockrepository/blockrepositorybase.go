@@ -51,15 +51,10 @@ func NewBlockRepositoryBase(
         errorChannel:        make(chan error),
         responseChannel:     make(chan patcher.BlockReponse),
         requestChannel:      make(chan patcher.MissingBlockSpan),
-        iResultC:            make(chan blocksources.AsyncResult),
-        iRequestC:           make(chan blocksources.QueuedRequest),
     }
 
-    b.closeWaiter.Add(2)
-
-    go b.loopRequest()
+    b.closeWaiter.Add(1)
     go b.loopReorder()
-
     return b
 }
 
@@ -75,10 +70,6 @@ type BlockRepositoryBase struct {
     errorChannel           chan error
     responseChannel        chan patcher.BlockReponse
     requestChannel         chan patcher.MissingBlockSpan
-
-    // these two are to exchange result/request
-    iResultC               chan blocksources.AsyncResult
-    iRequestC              chan blocksources.QueuedRequest
 
     closeWaiter            sync.WaitGroup
 }
@@ -103,47 +94,10 @@ func (b *BlockRepositoryBase) EncounteredError() <-chan error {
 
 // Close function has to be super simple.
 // If something goes wrong after closing the exitChannel, it's caller's fault.
-func (b *BlockRepositoryBase) Close() (err error) {
+func (b *BlockRepositoryBase) Close() error {
     close(b.exitChannel)
-
     b.closeWaiter.Wait()
-
-    close(b.errorChannel)
-    close(b.requestChannel)
-    close(b.responseChannel)
-    close(b.iResultC)
-    close(b.iRequestC)
-    return
-}
-
-func (b *BlockRepositoryBase) loopRequest() {
-    var (
-        resolver   = b.BlockSourceResolver
-        requester  = b.Requester
-    )
-
-    defer b.closeWaiter.Done()
-
-    for {
-        select {
-            case <- b.exitChannel: {
-                return
-            }
-            case nextRequest := <- b.iRequestC: {
-                var (
-                    startOffset = resolver.GetBlockStartOffset(nextRequest.StartBlockID)
-                    endOffset   = resolver.GetBlockEndOffset(nextRequest.EndBlockID)
-                    result, err = requester.DoRequest(startOffset, endOffset)
-                )
-                b.iResultC <- blocksources.AsyncResult{
-                    StartBlockID: nextRequest.StartBlockID,
-                    EndBlockID:   nextRequest.EndBlockID,
-                    Data:         result,
-                    Err:          err,
-                }
-            }
-        }
-    }
+    return nil
 }
 
 func (b *BlockRepositoryBase) loopReorder() {
@@ -165,6 +119,9 @@ func (b *BlockRepositoryBase) loopReorder() {
 
     defer func() {
         b.hasQuit = true
+        close(b.errorChannel)
+        close(b.requestChannel)
+        close(b.responseChannel)
         b.closeWaiter.Done()
     }()
 
@@ -207,7 +164,31 @@ func (b *BlockRepositoryBase) loopReorder() {
                 }
             }
 
-            case result := <- b.iResultC: {
+            default: {
+                if len(requestQueue) == 0 || inflightRequests != 0 {
+                    continue
+                }
+
+                nextRequest := requestQueue[len(requestQueue)-1]
+
+                requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
+                sort.Sort(sort.Reverse(requestOrdering))
+
+                inflightRequests += 1
+
+                // dispatch queued request
+                startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlockID)
+                endOffset   := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlockID)
+                response, err := b.Requester.DoRequest(startOffset, endOffset)
+                result := blocksources.AsyncResult{
+                    StartBlockID: nextRequest.StartBlockID,
+                    EndBlockID:   nextRequest.EndBlockID,
+                    Data:         response,
+                    Err:          err,
+                }
+
+                // remove dispatched request
+                requestQueue = requestQueue[:len(requestQueue)-1]
                 inflightRequests -= 1
 
                 if result.Err != nil {
@@ -247,23 +228,6 @@ func (b *BlockRepositoryBase) loopReorder() {
                     pendingResponse.Clear()
                     pendingResponse.SetResponse(&lowestResponse)
                 }
-            }
-
-            default: {
-                if len(requestQueue) == 0 || inflightRequests != 0 {
-                    continue
-                }
-                nextRequest := requestQueue[len(requestQueue)-1]
-
-                requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
-                sort.Sort(sort.Reverse(requestOrdering))
-
-                // dispatch queued request
-                inflightRequests += 1
-                b.iRequestC <- nextRequest
-
-                // remove dispatched request
-                requestQueue = requestQueue[:len(requestQueue)-1]
             }
         }
     }
