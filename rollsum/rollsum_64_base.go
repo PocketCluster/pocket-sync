@@ -5,7 +5,7 @@ import (
 )
 
 const (
-    FULL_BYTES_32 = (1 << 32) - 1
+    full_bytes_32 = (1 << 32) - 1
     rolsum64_size = 8
 )
 
@@ -85,6 +85,6 @@ func (r *Rollsum64Base) Size() int {
 
 // Puts the sum into b. Avoids allocation. b must have length >= 8
 func (r *Rollsum64Base) GetSum(b []byte) {
-    value := uint64((r.a & FULL_BYTES_32) + ((r.b & FULL_BYTES_32) << 32))
+    value := uint64((r.a & full_bytes_32) + ((r.b & full_bytes_32) << 32))
     binary.LittleEndian.PutUint64(b, value)
 }

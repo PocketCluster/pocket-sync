@@ -166,12 +166,13 @@ func MakeRSync(
 
 // Patch the files
 func (rsync *RSync) Patch() (err error) {
-    numMatchers := int64(DefaultConcurrency)
-    blockSize := rsync.Summary.GetBlockSize()
-    sectionSize := rsync.Summary.GetFileSize() / numMatchers
+    var (
+        merger      = &comparer.MatchMerger{}
+        numMatchers = int64(DefaultConcurrency)
+        blockSize   = rsync.Summary.GetBlockSize()
+        sectionSize = rsync.Summary.GetFileSize() / numMatchers
+    )
     sectionSize += int64(blockSize) - (sectionSize % int64(blockSize))
-
-    merger := &comparer.MatchMerger{}
 
     for i := int64(0); i < numMatchers; i++ {
         compare := &comparer.Comparer{}
@@ -202,7 +203,7 @@ func (rsync *RSync) Patch() (err error) {
         rsync.Source,
         toPatcherMissingSpan(missing, int64(blockSize)),
         toPatcherFoundSpan(mergedBlocks, int64(blockSize)),
-        20*megabyte,
+        20 * megabyte,
         rsync.Output,
     )
 }
