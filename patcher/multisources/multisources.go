@@ -2,29 +2,11 @@ package multisources
 
 import (
     "io"
+    "math/rand"
 
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
 )
-
-func withinFirstBlockOfLocalBlocks(currentBlock uint, localBlocks []patcher.FoundBlockSpan) bool {
-    return len(localBlocks) > 0 && localBlocks[0].StartBlock <= currentBlock && localBlocks[0].EndBlock >= currentBlock
-}
-
-func withinFirstBlockOfRemoteBlocks(currentBlock uint, remoteBlocks []patcher.MissingBlockSpan) bool {
-    return len(remoteBlocks) > 0 && remoteBlocks[0].StartBlock <= currentBlock && remoteBlocks[0].EndBlock >= currentBlock
-}
-
-func calculateNumberOfCompletedBlocks(resultLength uint, blockSize uint) uint {
-    var completedBlockCount uint = resultLength / blockSize
-
-    // round up in the case of a partial block (last block may not be full sized)
-    if resultLength % blockSize != 0 {
-        completedBlockCount += 1
-    }
-
-    return completedBlockCount
-}
 
 /*
  * MultiSources Patcher will stream the patched version of the file to output from multiple sources, since it works
@@ -82,6 +64,10 @@ func (m *MultiSourcePatcher) Patch() error {
         endBlockAvailable  uint = 0
         endBlock           uint = 0
         currentBlock       uint = 0
+
+        // enable us to order responses for the active requests, lowest to highest
+        requestOrdering    = make([]uint,                0, 1)
+        responseOrdering   = make(patcher.BlockReponse,  0, 1)
     )
 
     // adjust blocks
@@ -97,9 +83,78 @@ func (m *MultiSourcePatcher) Patch() error {
     }
 
     for currentBlock <= endBlock {
+        firstMissing := m.requiredRemoteBlocks[0]
+        reference := pickAvaiableReference(m.references)
+        reference.RequestBlocks(firstMissing)
 
+        select {
+
+            case result := <-reference.GetResultChannel(): {
+                if result.StartBlock == currentBlock {
+                    if _, err := m.output.Write(result.Data); err != nil {
+                        return errors.Errorf("Could not write data to output: %v", err)
+
+                    } else {
+                        completed := calculateNumberOfCompletedBlocks(uint(len(result.Data)), uint(firstMissing.BlockSize))
+
+                        if completed != (firstMissing.EndBlock - firstMissing.StartBlock) + 1 {
+                            return errors.Errorf(
+                                "Unexpected reponse length from remote source: blocks %v-%v (got %v blocks)",
+                                firstMissing.StartBlock,
+                                firstMissing.EndBlock,
+                                completed)
+                        }
+
+                        currentBlock += completed
+                        m.requiredRemoteBlocks = m.requiredRemoteBlocks[1:]
+                    }
+
+                } else {
+                    return errors.Errorf("Received unexpected block: %v", result.StartBlock)
+                }
+            }
+            case err := <-reference.EncounteredError(): {
+                return errors.Errorf("Failed to read from reference file: %v", err)
+            }
+        }
     }
 
     return nil
 }
 
+
+func withinFirstBlockOfLocalBlocks(currentBlock uint, localBlocks []patcher.FoundBlockSpan) bool {
+    return len(localBlocks) > 0 && localBlocks[0].StartBlock <= currentBlock && localBlocks[0].EndBlock >= currentBlock
+}
+
+func withinFirstBlockOfRemoteBlocks(currentBlock uint, remoteBlocks []patcher.MissingBlockSpan) bool {
+    return len(remoteBlocks) > 0 && remoteBlocks[0].StartBlock <= currentBlock && remoteBlocks[0].EndBlock >= currentBlock
+}
+
+func calculateNumberOfCompletedBlocks(resultLength uint, blockSize uint) uint {
+    var completedBlockCount uint = resultLength / blockSize
+
+    // round up in the case of a partial block (last block may not be full sized)
+    if resultLength % blockSize != 0 {
+        completedBlockCount += 1
+    }
+
+    return completedBlockCount
+}
+
+func pickAvaiableReference(references []patcher.BlockSource) patcher.BlockSource {
+    var (
+        poolSize = len(references)
+        pickedIndex int = 0
+        source patcher.BlockSource
+    )
+
+    for {
+        pickedIndex = rand.Intn(poolSize)
+        source = references[pickedIndex]
+        avail := <- source.CheckAvailable()
+        if avail {
+            return source
+        }
+    }
+}
