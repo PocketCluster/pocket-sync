@@ -8,7 +8,6 @@ import (
     "testing"
 
     "github.com/Redundancy/go-sync/filechecksum"
-    "github.com/Redundancy/go-sync/indexbuilder"
 )
 
 func CheckResults(
@@ -76,7 +75,7 @@ func compare(
     originalFileContent := bytes.NewBufferString(original)
     generator := filechecksum.NewFileChecksumGenerator(block_size)
 
-    _, reference, _, err := indexbuilder.BuildChecksumIndex(
+    _, reference, _, err := filechecksum.BuildChecksumIndex(
         generator,
         originalFileContent,
     )
@@ -385,7 +384,7 @@ func TestTwoComparisons(t *testing.T) {
     modifiedFile := bytes.NewReader([]byte(MODIFIED_STRING))
     generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
 
-    _, reference, _, _ := indexbuilder.BuildChecksumIndex(
+    _, reference, _, _ := filechecksum.BuildChecksumIndex(
         generator,
         originalFile,
     )

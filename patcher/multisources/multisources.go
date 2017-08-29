@@ -6,6 +6,7 @@ import (
 
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
+    "sort"
 )
 
 /*
@@ -81,10 +82,11 @@ func (m *MultiSourcePatcher) Patch() error {
         endBlockAvailable  uint = 0
         endBlock           uint = 0
         currentBlock       uint = 0
+        poolSize           int  = len(m.repositories)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering    = make([]uint,                0, 1)
-        responseOrdering   = make([]patcher.BlockReponse,  0, 1)
+        requestOrdering    = make([]uint,                  0, poolSize)
+        responseOrdering   = make([]patcher.BlockReponse,  0, poolSize)
     )
 
     // adjust blocks
@@ -104,35 +106,35 @@ func (m *MultiSourcePatcher) Patch() error {
         go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC, m.repoRequestC)
     }
 
-    firstMissing := m.requiredRemoteBlocks[0]
-
     for currentBlock <= endBlock {
+        firstMissing := m.requiredRemoteBlocks[0]
+//        reference.RequestBlocks(firstMissing)
 
         select {
 
             case result := <-m.repoResponseC: {
-                if result.StartBlock == currentBlock {
-                    if _, err := m.output.Write(result.Data); err != nil {
-                        return errors.Errorf("Could not write data to output: %v", err)
-
-                    } else {
-                        completed := calculateNumberOfCompletedBlocks(uint(len(result.Data)), uint(firstMissing.BlockSize))
-
-                        if completed != (firstMissing.EndBlock - firstMissing.StartBlock) + 1 {
-                            return errors.Errorf(
-                                "Unexpected reponse length from remote source: blocks %v-%v (got %v blocks)",
-                                firstMissing.StartBlock,
-                                firstMissing.EndBlock,
-                                completed)
-                        }
-
-                        currentBlock += completed
-                        m.requiredRemoteBlocks = m.requiredRemoteBlocks[1:]
-                    }
-
-                } else {
+                // error check
+                if result.StartBlock != currentBlock {
                     return errors.Errorf("Received unexpected block: %v", result.StartBlock)
                 }
+                _, err := m.output.Write(result.Data)
+                if err != nil {
+                    return errors.Errorf("Could not write data to output: %v", err)
+                }
+
+                // calculate # of blocks completed
+                completed := calculateNumberOfCompletedBlocks(uint64(len(result.Data)), uint64(firstMissing.BlockSize))
+                if completed != (firstMissing.EndBlock - firstMissing.StartBlock) + 1 {
+                    return errors.Errorf(
+                        "Unexpected reponse length from remote source: blocks %v-%v (got %v blocks)",
+                        firstMissing.StartBlock,
+                        firstMissing.EndBlock,
+                        completed)
+                }
+
+                // move iterator
+                currentBlock += completed
+                m.requiredRemoteBlocks = m.requiredRemoteBlocks[1:]
             }
 
             case err := <-m.repoErrorC: {
@@ -140,14 +142,25 @@ func (m *MultiSourcePatcher) Patch() error {
             }
 
             default: {
+                // 1. pool available | 2. available slot in the pool
+                if 0 < poolSize && len(requestOrdering) < poolSize {
 
+                    for len(requestOrdering) <= poolSize {
+                        firstMissing := m.requiredRemoteBlocks[0]
+                        m.requiredRemoteBlocks = m.requiredRemoteBlocks[1:]
+
+                        requestOrdering = append(requestOrdering, firstMissing)
+                        sort.Sort(sort.Reverse(requestOrdering))
+
+                        m.repoRequestC <- firstMissing
+                    }
+                }
             }
         }
     }
 
     return nil
 }
-
 
 func withinFirstBlockOfLocalBlocks(currentBlock uint, localBlocks []patcher.FoundBlockSpan) bool {
     return len(localBlocks) > 0 && localBlocks[0].StartBlock <= currentBlock && localBlocks[0].EndBlock >= currentBlock
@@ -157,14 +170,14 @@ func withinFirstBlockOfRemoteBlocks(currentBlock uint, remoteBlocks []patcher.Mi
     return len(remoteBlocks) > 0 && remoteBlocks[0].StartBlock <= currentBlock && remoteBlocks[0].EndBlock >= currentBlock
 }
 
-func calculateNumberOfCompletedBlocks(resultLength uint, blockSize uint) uint {
-    var completedBlockCount uint = resultLength / blockSize
+func calculateNumberOfCompletedBlocks(resultLength uint64, blockSize uint64) uint {
+    var completedBlockCount uint64 = resultLength / blockSize
 
     // round up in the case of a partial block (last block may not be full sized)
     if resultLength % blockSize != 0 {
         completedBlockCount += 1
     }
 
-    return completedBlockCount
+    return uint(completedBlockCount)
 }
 

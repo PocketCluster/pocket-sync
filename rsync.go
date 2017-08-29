@@ -33,11 +33,8 @@ type ReadSeekerAt interface {
 }
 
 /*
-RSync is an object designed to make the standard use-case for gosync as
-easy as possible.
-
-To this end, it hides away many low level choices by default, and makes some
-assumptions.
+ * RSync is an object designed to make the standard use-case for gosync as easy as possible.
+ * To this end, it hides away many low level choices by default, and makes some assumptions.
 */
 type RSync struct {
     Input  ReadSeekerAt
@@ -96,20 +93,24 @@ func MakeRSync(
     OutFile string,
     Summary FileSummary,
 ) (r *RSync, err error) {
-    useTempFile := false
+    var (
+        out io.WriteCloser
+        outFilename = OutFile
+        copier closer
+
+        // blocksource
+        source *blocksources.BlockSourceBase
+        useTempFile bool = false
+    )
+
     if useTempFile, err = IsSameFile(InputFile, OutFile); err != nil {
         return nil, err
     }
 
     inputFile, err := os.Open(InputFile)
-
     if err != nil {
         return
     }
-
-    var out io.WriteCloser
-    var outFilename = OutFile
-    var copier closer
 
     if useTempFile {
         out, outFilename, err = getTempFile()
@@ -131,9 +132,6 @@ func MakeRSync(
 
         copier = nullCloser{}
     }
-
-    // blocksource
-    var source *blocksources.BlockSourceBase
 
     resolver := blocksources.MakeFileSizedBlockResolver(
         uint64(Summary.GetBlockSize()),

@@ -1,15 +1,13 @@
 package gosync
 
 import (
+    "bytes"
     "fmt"
     "testing"
-
-    "bytes"
 
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/comparer"
     "github.com/Redundancy/go-sync/filechecksum"
-    "github.com/Redundancy/go-sync/indexbuilder"
     "github.com/Redundancy/go-sync/util/readers"
 )
 
@@ -25,7 +23,7 @@ func Example() {
     const localVersion = "The qwik brown fox jumped 0v3r the lazy"
 
     generator := filechecksum.NewFileChecksumGenerator(blockSize)
-    _, referenceFileIndex, _, err := indexbuilder.BuildIndexFromString(
+    _, referenceFileIndex, _, err := filechecksum.BuildIndexFromString(
         generator,
         reference,
     )
@@ -90,7 +88,7 @@ func BenchmarkIndexComparisons(b *testing.B) {
 
     file := readers.NewSizedNonRepeatingSequence(6, SIZE)
     generator := filechecksum.NewFileChecksumGenerator(8 * KB)
-    _, index, _, err := indexbuilder.BuildChecksumIndex(generator, file)
+    _, index, _, err := filechecksum.BuildChecksumIndex(generator, file)
 
     if err != nil {
         b.Fatal(err)
