@@ -2,7 +2,7 @@ package multisources
 
 import (
     "io"
-    "math/rand"
+    "sync"
 
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
@@ -38,6 +38,13 @@ func NewMultiSourcePatcher(
         repositories:           repositories,
         requiredRemoteBlocks:   requiredRemoteBlocks,
         locallyAvailableBlocks: locallyAvailableBlocks,
+
+        repoWaiter:             &sync.WaitGroup{},
+        repoExitC:              make(chan bool),
+        repoErrorC:             make(chan error),
+        repoResponseC:          make(chan patcher.BlockReponse),
+        repoRequestC:           make(chan patcher.MissingBlockSpan),
+
         maxBlockStorage:        maxBlockStorage,
     }, nil
 }
@@ -49,12 +56,22 @@ type MultiSourcePatcher struct {
     requiredRemoteBlocks   []patcher.MissingBlockSpan
     locallyAvailableBlocks []patcher.FoundBlockSpan
 
+    repoWaiter             *sync.WaitGroup
+    repoExitC              chan bool
+    repoErrorC             chan error
+    repoResponseC          chan patcher.BlockReponse
+    repoRequestC           chan patcher.MissingBlockSpan
+
     // the amount of memory we're allowed to use for temporary data storage
     maxBlockStorage        uint64
 }
 
-func (m *MultiSourcePatcher) Close() error {
-
+func (m *MultiSourcePatcher) closeRepositories() error {
+    close(m.repoExitC)
+    m.repoWaiter.Wait()
+    close(m.repoErrorC)
+    close(m.repoResponseC)
+    close(m.repoRequestC)
     return nil
 }
 
@@ -67,7 +84,7 @@ func (m *MultiSourcePatcher) Patch() error {
 
         // enable us to order responses for the active requests, lowest to highest
         requestOrdering    = make([]uint,                0, 1)
-        responseOrdering   = make(patcher.BlockReponse,  0, 1)
+        responseOrdering   = make([]patcher.BlockReponse,  0, 1)
     )
 
     // adjust blocks
@@ -82,14 +99,18 @@ func (m *MultiSourcePatcher) Patch() error {
         endBlock = endBlockAvailable
     }
 
+    // launch repository pool
+    for _, repo := range m.repositories {
+        go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC, m.repoRequestC)
+    }
+
+    firstMissing := m.requiredRemoteBlocks[0]
+
     for currentBlock <= endBlock {
-        firstMissing := m.requiredRemoteBlocks[0]
-        reference := pickAvaiableReference(m.references)
-        reference.RequestBlocks(firstMissing)
 
         select {
 
-            case result := <-reference.GetResultChannel(): {
+            case result := <-m.repoResponseC: {
                 if result.StartBlock == currentBlock {
                     if _, err := m.output.Write(result.Data); err != nil {
                         return errors.Errorf("Could not write data to output: %v", err)
@@ -113,8 +134,13 @@ func (m *MultiSourcePatcher) Patch() error {
                     return errors.Errorf("Received unexpected block: %v", result.StartBlock)
                 }
             }
-            case err := <-reference.EncounteredError(): {
+
+            case err := <-m.repoErrorC: {
                 return errors.Errorf("Failed to read from reference file: %v", err)
+            }
+
+            default: {
+
             }
         }
     }
@@ -142,19 +168,3 @@ func calculateNumberOfCompletedBlocks(resultLength uint, blockSize uint) uint {
     return completedBlockCount
 }
 
-func pickAvaiableReference(references []patcher.BlockSource) patcher.BlockRepository {
-    var (
-        poolSize = len(references)
-        pickedIndex int = 0
-        source patcher.BlockSource
-    )
-
-    for {
-        pickedIndex = rand.Intn(poolSize)
-        source = references[pickedIndex]
-        avail := <- source.CheckAvailable()
-        if avail {
-            return source
-        }
-    }
-}
