@@ -53,10 +53,14 @@ type ChecksumIndex struct {
 // Builds an index in which chunks can be found, with their corresponding offsets
 // We use this for the
 func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
-    n := &ChecksumIndex{
-        BlockCount:         len(checksums),
-        weakChecksumLookup: make([]map[uint64]StrongChecksumList, 256),
-    }
+    var (
+        n = &ChecksumIndex{
+            BlockCount:         len(checksums),
+            weakChecksumLookup: make([]map[uint64]StrongChecksumList, 256),
+        }
+        sum = 0
+        count = 0
+    )
 
     for _, chunk := range checksums {
         weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
@@ -72,9 +76,6 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
         )
 
     }
-
-    sum := 0
-    count := 0
 
     for _, a := range n.weakChecksumLookup {
         for _, c := range a {

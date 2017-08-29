@@ -14,7 +14,7 @@ import (
 func Example() {
     // due to short example strings, use a very small block size
     // using one this small in practice would increase your file transfer!
-    const blockSize = 4
+    const blockSize = 8
 
     // This is the "file" as described by the authoritive version
     const reference = "The quick brown fox jumped over the lazy dog"
