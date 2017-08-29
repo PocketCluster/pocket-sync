@@ -1,4 +1,4 @@
-package blocksources
+package blockrepository
 
 import (
     "bytes"
@@ -6,8 +6,37 @@ import (
     "time"
 
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/blocksources"
 )
 
+//-----------------------------------------------------------------------------
+type erroringRequester struct{}
+type testError struct{}
+
+func (e *testError) Error() string {
+    return "test"
+}
+
+func (e *erroringRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
+    return nil, &testError{}
+}
+
+func (e *erroringRequester) IsFatal(err error) bool {
+    return true
+}
+
+//-----------------------------------------------------------------------------
+type FunctionRequester func(a, b int64) ([]byte, error)
+
+func (f FunctionRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
+    return f(startOffset, endOffset)
+}
+
+func (f FunctionRequester) IsFatal(err error) bool {
+    return true
+}
+
+//-----------------------------------------------------------------------------
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(nil, nil, nil)
@@ -26,7 +55,7 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
 func Test_BlockRepositoryBase_Error(t *testing.T) {
     b := NewBlockRepositoryBase(
         &erroringRequester{},
-        MakeNullFixedSizeResolver(4),
+        blocksources.MakeNullFixedSizeResolver(4),
         nil,
     )
     defer b.Close()
@@ -52,7 +81,7 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
             FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return expected, nil
             }),
-            MakeNullFixedSizeResolver(4),
+            blocksources.MakeNullFixedSizeResolver(4),
             nil,
         )
     )
@@ -82,7 +111,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
             FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return content[start:end], nil
             }),
-            MakeNullFixedSizeResolver(2),
+            blocksources.MakeNullFixedSizeResolver(2),
             nil,
         )
     )
@@ -132,7 +161,7 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
                 <-(channeler[start])
                 return content[start:end], nil
             }),
-            MakeNullFixedSizeResolver(1),
+            blocksources.MakeNullFixedSizeResolver(1),
             nil,
         )
     )
@@ -185,7 +214,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
                 counter <- -1
                 return []byte{0, 0}, nil
             }),
-            MakeNullFixedSizeResolver(1),
+            blocksources.MakeNullFixedSizeResolver(1),
             nil,
         )
     )

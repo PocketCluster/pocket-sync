@@ -7,70 +7,71 @@ import (
 )
 
 /*
- * errorWatcher is a small helper object.
- * sendIfSet will only return a channel if there is an error set, so w.sendIfSet() <- w.Err() is always safe in a select
+ * ErrorWatcher is a small helper object.
+ * SendIfSet will only return a channel if there is an error set, so w.SendIfSet() <- w.Error() is always safe in a select
  * statement even if there is no error set
  */
-type errorWatcher struct {
-    errorChannel chan error
-    lastError    error
+type ErrorWatcher struct {
+    ErrorChannel chan error
+    LastError    error
 }
 
-func (w *errorWatcher) setError(e error) {
-    if w.lastError != nil {
+func (w *ErrorWatcher) SetError(e error) {
+    if w.LastError != nil {
         log.Errorf(errors.Errorf("cannot set a new error when one is already set!").Error())
     }
-    w.lastError = e
+    w.LastError = e
 }
 
-func (w *errorWatcher) clear() {
-    w.lastError = nil
+func (w *ErrorWatcher) Clear() {
+    w.LastError = nil
 }
 
-func (w *errorWatcher) Err() error {
-    return w.lastError
+func (w *ErrorWatcher) Err() error {
+    return w.LastError
 }
 
-func (w *errorWatcher) sendIfSet() chan<- error {
-    if w.lastError != nil {
-        return w.errorChannel
+func (w *ErrorWatcher) SendIfSet() chan<- error {
+    if w.LastError != nil {
+        return w.ErrorChannel
     } else {
         return nil
     }
 }
 
-type pendingResponseHelper struct {
-    responseChannel chan patcher.BlockReponse
-    pendingResponse *patcher.BlockReponse
+//-----------------------------------------------------------------------------
+type PendingResponseHelper struct {
+    ResponseChannel chan patcher.BlockReponse
+    PendingResponse *patcher.BlockReponse
 }
 
-func (w *pendingResponseHelper) setResponse(r *patcher.BlockReponse) {
-    if w.pendingResponse != nil {
-        log.Errorf(errors.Errorf("Setting a response when one is already set! Had startblock %v, got %v", r.StartBlock, w.pendingResponse.StartBlock).Error())
+func (w *PendingResponseHelper) SetResponse(r *patcher.BlockReponse) {
+    if w.PendingResponse != nil {
+        log.Errorf(errors.Errorf("Setting a response when one is already set! Had startblock %v, got %v", r.StartBlock, w.PendingResponse.StartBlock).Error())
     }
-    w.pendingResponse = r
+    w.PendingResponse = r
 }
 
-func (w *pendingResponseHelper) clear() {
-    w.pendingResponse = nil
+func (w *PendingResponseHelper) Clear() {
+    w.PendingResponse = nil
 }
 
-func (w *pendingResponseHelper) Response() patcher.BlockReponse {
-    if w.pendingResponse == nil {
+func (w *PendingResponseHelper) Response() patcher.BlockReponse {
+    if w.PendingResponse == nil {
         return patcher.BlockReponse{}
     }
-    return *w.pendingResponse
+    return *w.PendingResponse
 }
 
-func (w *pendingResponseHelper) sendIfPending() chan<- patcher.BlockReponse {
-    if w.pendingResponse != nil {
-        return w.responseChannel
+func (w *PendingResponseHelper) SendIfPending() chan<- patcher.BlockReponse {
+    if w.PendingResponse != nil {
+        return w.ResponseChannel
     } else {
         return nil
     }
-
 }
 
+//-----------------------------------------------------------------------------
 type UintSlice []uint
 
 func (r UintSlice) Len() int {
@@ -85,13 +86,15 @@ func (r UintSlice) Less(i, j int) bool {
     return r[i] < r[j]
 }
 
-type asyncResult struct {
-    startBlockID uint
-    endBlockID   uint
-    data         []byte
-    err          error
+//-----------------------------------------------------------------------------
+type AsyncResult struct {
+    StartBlockID uint
+    EndBlockID   uint
+    Data         []byte
+    Err          error
 }
 
+//-----------------------------------------------------------------------------
 type QueuedRequest struct {
     StartBlockID uint
     EndBlockID   uint
@@ -111,6 +114,7 @@ func (r QueuedRequestList) Less(i, j int) bool {
     return r[i].StartBlockID < r[j].StartBlockID
 }
 
+//-----------------------------------------------------------------------------
 func MakeNullFixedSizeResolver(blockSize uint64) BlockSourceOffsetResolver {
     return &FixedSizeBlockResolver{
         BlockSize: blockSize,

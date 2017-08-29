@@ -9,8 +9,9 @@ import (
 )
 
 /*
- * BlockSourceRequester does synchronous requests on a remote source of blocks concurrency is handled by the
- * BlockSourceBase. This provides a simple way of implementing a particular
+ * BlockSourceRequester does synchronous requests on a remote source of blocks.
+ * Concurrency is handled by the BlockSourceBase.
+ * This provides a simple way of implementing a particular
  */
 type BlockSourceRequester interface {
     // This method is called on multiple goroutines, and must support simultaneous requests
@@ -142,13 +143,13 @@ func (s *BlockSourceBase) loop() {
         inflightRequests    = 0
         //inflightBytes     = int64(0)
 
-        pendingErrors       = &errorWatcher{
-            errorChannel: s.errorChannel,
+        pendingErrors       = &ErrorWatcher{
+            ErrorChannel: s.errorChannel,
         }
-        pendingResponse     = &pendingResponseHelper{
-            responseChannel: s.responseChannel,
+        pendingResponse     = &PendingResponseHelper{
+            ResponseChannel: s.responseChannel,
         }
-        resultChan          = make(chan asyncResult)
+        resultChan          = make(chan AsyncResult)
         requestQueue        = make(QueuedRequestList, 0, s.ConcurrentRequests * 2)
 
         // enable us to order responses for the active requests, lowest to highest
@@ -184,11 +185,11 @@ func (s *BlockSourceBase) loop() {
                     endOffset,
                 )
 
-                resultChan <- asyncResult{
-                    startBlockID: nextRequest.StartBlockID,
-                    endBlockID:   nextRequest.EndBlockID,
-                    data:         result,
-                    err:          err,
+                resultChan <- AsyncResult{
+                    StartBlockID: nextRequest.StartBlockID,
+                    EndBlockID:   nextRequest.EndBlockID,
+                    Data:         result,
+                    Err:          err,
                 }
             }()
 
@@ -211,30 +212,30 @@ func (s *BlockSourceBase) loop() {
             case result := <-resultChan: {
                 inflightRequests -= 1
 
-                if result.err != nil {
-                    pendingErrors.setError(result.err)
-                    pendingResponse.clear()
+                if result.Err != nil {
+                    pendingErrors.SetError(result.Err)
+                    pendingResponse.Clear()
                     state = STATE_EXITING
                     break
                 }
 
-                s.bytesRequested += int64(len(result.data))
+                s.bytesRequested += int64(len(result.Data))
 
-                if s.Verifier != nil && !s.Verifier.VerifyBlockRange(result.startBlockID, result.data) {
-                    pendingErrors.setError(
+                if s.Verifier != nil && !s.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
+                    pendingErrors.SetError(
                         fmt.Errorf(
                             "The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                            result.startBlockID,
-                            result.endBlockID))
-                    pendingResponse.clear()
+                            result.StartBlockID,
+                            result.EndBlockID))
+                    pendingResponse.Clear()
                     state = STATE_EXITING
                     break
                 }
 
                 responseOrdering = append(responseOrdering,
                     patcher.BlockReponse{
-                        StartBlock: result.startBlockID,
-                        Data:       result.data,
+                        StartBlock: result.StartBlockID,
+                        Data:       result.Data,
                     })
 
                 // sort high to low
@@ -244,15 +245,15 @@ func (s *BlockSourceBase) loop() {
                 // the response. Otherwise, wait.
                 lowestRequest := requestOrdering[len(requestOrdering)-1]
 
-                if lowestRequest == result.startBlockID {
+                if lowestRequest == result.StartBlockID {
                     lowestResponse := responseOrdering[len(responseOrdering)-1]
-                    pendingResponse.clear()
-                    pendingResponse.setResponse(&lowestResponse)
+                    pendingResponse.Clear()
+                    pendingResponse.SetResponse(&lowestResponse)
                 }
             }
 
-            case pendingResponse.sendIfPending() <- pendingResponse.Response(): {
-                pendingResponse.clear()
+            case pendingResponse.SendIfPending() <- pendingResponse.Response(): {
+                pendingResponse.Clear()
                 responseOrdering = responseOrdering[:len(responseOrdering)-1]
                 requestOrdering = requestOrdering[:len(requestOrdering)-1]
 
@@ -262,13 +263,13 @@ func (s *BlockSourceBase) loop() {
                     lowestRequest := requestOrdering[len(requestOrdering)-1]
 
                     if lowestRequest == lowestResponse.StartBlock {
-                        pendingResponse.setResponse(&lowestResponse)
+                        pendingResponse.SetResponse(&lowestResponse)
                     }
                 }
             }
 
-            case pendingErrors.sendIfSet() <- pendingErrors.Err(): {
-                pendingErrors.clear()
+            case pendingErrors.SendIfSet() <- pendingErrors.Err(): {
+                pendingErrors.Clear()
             }
 
             case <-s.exitChannel: {

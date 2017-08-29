@@ -64,15 +64,15 @@ func TestCreateAndCloseBlockSourceBase(t *testing.T) {
 }
 
 func TestErrorWatcher(t *testing.T) {
-    e := errorWatcher{errorChannel: make(chan error)}
+    e := ErrorWatcher{ErrorChannel: make(chan error)}
 
-    if e.sendIfSet() != nil {
+    if e.SendIfSet() != nil {
         t.Errorf("Channel should be nil when created")
     }
 
-    e.setError(&testError{})
+    e.SetError(&testError{})
 
-    if e.sendIfSet() == nil {
+    if e.SendIfSet() == nil {
         t.Errorf("Channel should be non-nil when error is set")
     }
     if e.Err() == nil {
