@@ -2,6 +2,7 @@ package blockrepository
 
 import (
     "bytes"
+    "sync"
     "testing"
     "time"
 
@@ -39,13 +40,27 @@ func (f FunctionRequester) IsFatal(err error) bool {
 //-----------------------------------------------------------------------------
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
-        b = NewBlockRepositoryBase(nil, nil, nil)
+        b = NewBlockRepositoryBase(nil,
+            blocksources.MakeNullFixedSizeResolver(4),
+            nil)
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.BlockReponse)
+        requestC    = make(chan patcher.MissingBlockSpan)
     )
+    defer func() {
+        close(errorC)
+        close(responseC)
+        close(requestC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
 
-    err := b.Close()
-    if err != nil {
-        t.Error(err.Error())
-    }
+    close(exitC)
+    waiter.Wait()
 
     if !b.hasQuit {
         t.Fatal("Block source base did not exit")
@@ -53,23 +68,40 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
 }
 
 func Test_BlockRepositoryBase_Error(t *testing.T) {
-    b := NewBlockRepositoryBase(
-        &erroringRequester{},
-        blocksources.MakeNullFixedSizeResolver(4),
-        nil,
+    var (
+        b = NewBlockRepositoryBase(
+            &erroringRequester{},
+            blocksources.MakeNullFixedSizeResolver(4),
+            nil,
+        )
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.BlockReponse)
+        requestC    = make(chan patcher.MissingBlockSpan)
     )
-    defer b.Close()
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(requestC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
 
-    b.RequestBlocks(patcher.MissingBlockSpan{
+    requestC <- patcher.MissingBlockSpan{
         BlockSize:  4,
         StartBlock: 1,
         EndBlock:   1,
-    })
+    }
 
     select {
         case <-time.After(time.Second):
             t.Fatal("Timed out waiting for error")
-        case err := <-b.EncounteredError():
+        case err := <-errorC:
             t.Log(err.Error())
     }
 }
@@ -84,16 +116,31 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
             blocksources.MakeNullFixedSizeResolver(4),
             nil,
         )
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.BlockReponse)
+        requestC    = make(chan patcher.MissingBlockSpan)
     )
-    defer b.Close()
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(requestC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
 
-    b.RequestBlocks(patcher.MissingBlockSpan{
+    requestC <- patcher.MissingBlockSpan{
         BlockSize:  4,
         StartBlock: 1,
         EndBlock:   1,
-    })
+    }
 
-    result := <-b.GetResultChannel()
+    result := <- responseC
 
     if result.StartBlock != 1 {
         t.Errorf("Unexpected start block in result: %v", result.StartBlock)
@@ -114,24 +161,33 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
             blocksources.MakeNullFixedSizeResolver(2),
             nil,
         )
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.BlockReponse)
+        requestC    = make(chan patcher.MissingBlockSpan)
     )
-    defer b.Close()
-
-    b.RequestBlocks(patcher.MissingBlockSpan{
-        BlockSize:  2,
-        StartBlock: 0,
-        EndBlock:   0,
-    })
-
-    b.RequestBlocks(patcher.MissingBlockSpan{
-        BlockSize:  2,
-        StartBlock: 1,
-        EndBlock:   1,
-    })
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(requestC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
 
     for i := uint(0); i < 2; i++ {
+        requestC <- patcher.MissingBlockSpan{
+            BlockSize:  2,
+            StartBlock: uint(i),
+            EndBlock:   uint(i),
+        }
+
         select {
-            case r := <-b.GetResultChannel(): {
+            case r := <- responseC: {
                 if r.StartBlock != i {
                     t.Errorf("Wrong start block: %v", r.StartBlock)
                 }
@@ -164,21 +220,36 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
             blocksources.MakeNullFixedSizeResolver(1),
             nil,
         )
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.BlockReponse)
+        requestC    = make(chan patcher.MissingBlockSpan)
     )
-    defer b.Close()
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(requestC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
 
     for i := uint(0); i < 2; i++ {
 
-        b.RequestBlocks(patcher.MissingBlockSpan{
+        requestC <- patcher.MissingBlockSpan{
             BlockSize:  1,
             StartBlock: i,
             EndBlock:   i,
-        })
+        }
 
         channeler[i] <- true
 
         select {
-            case r := <-b.GetResultChannel():
+            case r := <- responseC:
                 if r.StartBlock != i {
                     t.Errorf(
                         "Wrong start block: %v on result %v",
@@ -200,37 +271,49 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
         call_counter = 0
         count        = 0
         max          = 0
-
-        counter      = make(chan int)
-        waiter       = make(chan bool)
-        exitC        = make(chan struct{})
+        counterC     = make(chan int)
+        waiterC      = make(chan bool)
 
         b = NewBlockRepositoryBase(
             FunctionRequester(func(start, end int64) (data []byte, err error) {
                 t.Logf("FunctionRequester start %d", start)
-                counter <- 1
+                counterC <- 1
                 call_counter += 1
-                <-waiter
-                counter <- -1
+                <-waiterC
+                counterC <- -1
                 return []byte{0, 0}, nil
             }),
             blocksources.MakeNullFixedSizeResolver(1),
             nil,
         )
+
+        waiter       = sync.WaitGroup{}
+        exitC        = make(chan bool)
+        errorC       = make(chan error)
+        responseC    = make(chan patcher.BlockReponse)
+        requestC     = make(chan patcher.MissingBlockSpan)
     )
     defer func() {
-        b.Close()
         close(exitC)
-        close(counter)
-        close(waiter)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(requestC)
+        close(counterC)
+        close(waiterC)
     }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+    }()
+
     go func() {
         for {
             select {
                 case <- exitC: {
                     return
                 }
-                case change, ok := <-counter: {
+                case change, ok := <-counterC: {
                     if !ok {
                         return
                     }
@@ -248,14 +331,14 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
 
     for i := 0; i < REQUESTS; i++ {
         t.Logf("RequestBlocks %d", i)
-        b.RequestBlocks(patcher.MissingBlockSpan{
+        requestC <- patcher.MissingBlockSpan{
             BlockSize:  1,
             StartBlock: uint(i),
             EndBlock:   uint(i),
-        })
+        }
 
-        waiter <- true
-        <-b.GetResultChannel()
+        waiterC <- true
+        <- responseC
 
         if max > 1 {
             t.Errorf("Maximum requests in flight was greater than the requested concurrency: %v", max)

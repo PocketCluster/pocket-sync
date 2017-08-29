@@ -16,7 +16,7 @@ import (
 
 func NewMultiSourcePatcher(
     localFile              io.ReadSeeker,
-    references             []patcher.BlockSource,
+    repositories           []patcher.BlockRepository,
     requiredRemoteBlocks   []patcher.MissingBlockSpan,
     locallyAvailableBlocks []patcher.FoundBlockSpan,
     maxBlockStorage        uint64,
@@ -29,13 +29,13 @@ func NewMultiSourcePatcher(
     if output == nil {
         return nil, errors.Errorf("no output to save retrieved blocks")
     }
-    if references == nil || len(references) == 0 {
+    if repositories == nil || len(repositories) == 0 {
         return nil, errors.Errorf("No BlockSource set for obtaining reference blocks")
     }
     return &MultiSourcePatcher{
         localFile:              localFile,
         output:                 output,
-        references:             references,
+        repositories:           repositories,
         requiredRemoteBlocks:   requiredRemoteBlocks,
         locallyAvailableBlocks: locallyAvailableBlocks,
         maxBlockStorage:        maxBlockStorage,
@@ -45,7 +45,7 @@ func NewMultiSourcePatcher(
 type MultiSourcePatcher struct {
     localFile              io.ReadSeeker
     output                 io.Writer
-    references             []patcher.BlockSource
+    repositories           []patcher.BlockRepository
     requiredRemoteBlocks   []patcher.MissingBlockSpan
     locallyAvailableBlocks []patcher.FoundBlockSpan
 
@@ -142,7 +142,7 @@ func calculateNumberOfCompletedBlocks(resultLength uint, blockSize uint) uint {
     return completedBlockCount
 }
 
-func pickAvaiableReference(references []patcher.BlockSource) patcher.BlockSource {
+func pickAvaiableReference(references []patcher.BlockSource) patcher.BlockRepository {
     var (
         poolSize = len(references)
         pickedIndex int = 0

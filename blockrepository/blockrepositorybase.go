@@ -47,14 +47,7 @@ func NewBlockRepositoryBase(
         Requester:           requester,
         BlockSourceResolver: resolver,
         Verifier:            verifier,
-        exitChannel:         make(chan bool),
-        errorChannel:        make(chan error),
-        responseChannel:     make(chan patcher.BlockReponse),
-        requestChannel:      make(chan patcher.MissingBlockSpan),
     }
-
-    b.closeWaiter.Add(1)
-    go b.loopReorder()
     return b
 }
 
@@ -64,53 +57,23 @@ type BlockRepositoryBase struct {
     Verifier               blocksources.BlockVerifier
 
     hasQuit                bool
-    bytesRequested         int64
-
-    exitChannel            chan bool
-    errorChannel           chan error
-    responseChannel        chan patcher.BlockReponse
-    requestChannel         chan patcher.MissingBlockSpan
-
-    closeWaiter            sync.WaitGroup
 }
 
-func (b *BlockRepositoryBase) ReadBytes() int64 {
-    return b.bytesRequested
-}
-
-func (b *BlockRepositoryBase) RequestBlocks(block patcher.MissingBlockSpan) error {
-    b.requestChannel <- block
-    return nil
-}
-
-func (b *BlockRepositoryBase) GetResultChannel() <-chan patcher.BlockReponse {
-    return b.responseChannel
-}
-
-// If the block source encounters an unsurmountable problem
-func (b *BlockRepositoryBase) EncounteredError() <-chan error {
-    return b.errorChannel
-}
-
-// Close function has to be super simple.
-// If something goes wrong after closing the exitChannel, it's caller's fault.
-func (b *BlockRepositoryBase) Close() error {
-    close(b.exitChannel)
-    b.closeWaiter.Wait()
-    return nil
-}
-
-func (b *BlockRepositoryBase) loopReorder() {
+func (b *BlockRepositoryBase) HandleRequest(
+    waiter      *sync.WaitGroup,
+    exitC       chan bool,
+    errorC      chan error,
+    responseC   chan patcher.BlockReponse,
+    requestC    chan patcher.MissingBlockSpan,
+) {
     var (
         state               = STATE_RUNNING
-        inflightRequests    = 0
         pendingErrors       = &blocksources.ErrorWatcher{
-            ErrorChannel: b.errorChannel,
+            ErrorChannel: errorC,
         }
         pendingResponse     = &blocksources.PendingResponseHelper{
-            ResponseChannel: b.responseChannel,
+            ResponseChannel: responseC,
         }
-
         requestQueue        = make(blocksources.QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
         requestOrdering     = make(blocksources.UintSlice,         0, 1)
@@ -119,29 +82,15 @@ func (b *BlockRepositoryBase) loopReorder() {
 
     defer func() {
         b.hasQuit = true
-        close(b.errorChannel)
-        close(b.requestChannel)
-        close(b.responseChannel)
-        b.closeWaiter.Done()
+        waiter.Done()
     }()
 
     for state == STATE_RUNNING || pendingErrors.Err() != nil {
 
         select {
-            case <-b.exitChannel: {
+            case <-exitC: {
                 state = STATE_EXITING
                 return
-            }
-
-            case newRequest := <-b.requestChannel: {
-                requestQueue = append(
-                    requestQueue,
-                    b.BlockSourceResolver.SplitBlockRangeToDesiredSize(
-                        newRequest.StartBlock,
-                        newRequest.EndBlock,
-                    )...)
-
-                sort.Sort(sort.Reverse(requestQueue))
             }
 
             case pendingErrors.SendIfSet() <- pendingErrors.Err(): {
@@ -164,19 +113,27 @@ func (b *BlockRepositoryBase) loopReorder() {
                 }
             }
 
+            case newRequest := <- requestC: {
+                requestQueue = append(
+                    requestQueue,
+                    b.BlockSourceResolver.SplitBlockRangeToDesiredSize(
+                        newRequest.StartBlock,
+                        newRequest.EndBlock,
+                    )...)
+
+                sort.Sort(sort.Reverse(requestQueue))
+            }
+
             default: {
-                if len(requestQueue) == 0 || inflightRequests != 0 {
+                if len(requestQueue) == 0 {
                     continue
                 }
 
+                // dispatch queued request
                 nextRequest := requestQueue[len(requestQueue)-1]
-
                 requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
                 sort.Sort(sort.Reverse(requestOrdering))
 
-                inflightRequests += 1
-
-                // dispatch queued request
                 startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlockID)
                 endOffset   := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlockID)
                 response, err := b.Requester.DoRequest(startOffset, endOffset)
@@ -189,7 +146,6 @@ func (b *BlockRepositoryBase) loopReorder() {
 
                 // remove dispatched request
                 requestQueue = requestQueue[:len(requestQueue)-1]
-                inflightRequests -= 1
 
                 if result.Err != nil {
                     pendingErrors.SetError(result.Err)
@@ -197,8 +153,6 @@ func (b *BlockRepositoryBase) loopReorder() {
                     state = STATE_EXITING
                     break
                 }
-
-                b.bytesRequested += int64(len(result.Data))
 
                 if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
                     pendingErrors.SetError(
