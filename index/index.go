@@ -23,7 +23,6 @@
 package index
 
 import (
-    "bytes"
     "encoding/binary"
     "sort"
 
@@ -45,8 +44,8 @@ const (
  * We use a 256 element slice, and the value of the least significant byte to determine which map to look up into.
  */
 type ChecksumIndex struct {
-    weakChecksumLookup     []map[uint64]StrongChecksumList
-    checkSumSequence       StrongChecksumList
+    weakChecksumLookup     []map[uint64]chunks.StrongChecksumList
+    checkSumSequence       chunks.SequentialChecksumList
     AverageStrongLength    float64
     BlockCount             int
     MaxStrongLength        int
@@ -64,18 +63,18 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
     var (
         n = &ChecksumIndex{
             BlockCount:         len(checksums),
-            weakChecksumLookup: make([]map[uint64]StrongChecksumList, indexLookupMapSize),
-            checkSumSequence:   make(StrongChecksumList, 0, 1),
+            weakChecksumLookup: make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize),
+            checkSumSequence:   nil,
         }
         sum = 0
         count = 0
     )
 
     // copy/ append/ sort the checksum slice
-    chksumCopy := make(StrongChecksumList, 0, len(checksums))
+    chksumCopy := make(chunks.SequentialChecksumList, 0, len(checksums))
     copy(chksumCopy, checksums)
-    n.checkSumSequence = append(n.checkSumSequence, chksumCopy...)
-    sort.Sort(n.checkSumSequence)
+    sort.Sort(chksumCopy)
+    n.checkSumSequence = chksumCopy
 
     // create weak checksum map
     for _, chunk := range checksums {
@@ -83,7 +82,7 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
         arrayOffset := weakChecksumAsInt & indexOffsetFilter
 
         if n.weakChecksumLookup[arrayOffset] == nil {
-            n.weakChecksumLookup[arrayOffset] = make(map[uint64]StrongChecksumList)
+            n.weakChecksumLookup[arrayOffset] = make(map[uint64]chunks.StrongChecksumList)
         }
 
         n.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
@@ -111,8 +110,8 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
 
 func NewChecksumIndex() *ChecksumIndex {
     return  &ChecksumIndex{
-        weakChecksumLookup: make([]map[uint64]StrongChecksumList, indexLookupMapSize),
-        checkSumSequence:   make(StrongChecksumList, 0, 1),
+        weakChecksumLookup: make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize),
+        checkSumSequence:   make(chunks.SequentialChecksumList, 0, 1),
     }
 }
 
@@ -127,7 +126,7 @@ func (index *ChecksumIndex) AppendChecksums(checksums []chunks.ChunkChecksum) er
     )
 
     // copy/ append/ sort the checksum slice
-    chksumCopy := make(StrongChecksumList, 0, len(checksums))
+    chksumCopy := make(chunks.SequentialChecksumList, 0, len(checksums))
     copy(chksumCopy, checksums)
     index.checkSumSequence = append(index.checkSumSequence, chksumCopy...)
     sort.Sort(index.checkSumSequence)
@@ -138,7 +137,7 @@ func (index *ChecksumIndex) AppendChecksums(checksums []chunks.ChunkChecksum) er
         arrayOffset := weakChecksumAsInt & indexOffsetFilter
 
         if index.weakChecksumLookup[arrayOffset] == nil {
-            index.weakChecksumLookup[arrayOffset] = make(map[uint64]StrongChecksumList)
+            index.weakChecksumLookup[arrayOffset] = make(map[uint64]chunks.StrongChecksumList)
         }
 
         index.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
@@ -168,7 +167,7 @@ func (index *ChecksumIndex) WeakCount() int {
     return index.Count
 }
 
-func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) StrongChecksumList {
+func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) chunks.StrongChecksumList {
     x := binary.LittleEndian.Uint64(weak)
     if index.weakChecksumLookup[x & indexOffsetFilter] != nil {
         if v, ok := index.weakChecksumLookup[x & indexOffsetFilter][x]; ok {
@@ -189,69 +188,9 @@ func (index *ChecksumIndex) FindWeakChecksum2(chk []byte) interface{} {
 }
 
 func (index *ChecksumIndex) FindStrongChecksum2(chk []byte, weak interface{}) []chunks.ChunkChecksum {
-    if strongList, ok := weak.(StrongChecksumList); ok {
+    if strongList, ok := weak.(chunks.StrongChecksumList); ok {
         return strongList.FindStrongChecksum(chk)
     } else {
         return nil
     }
-}
-
-type StrongChecksumList []chunks.ChunkChecksum
-
-// Sortable interface
-func (s StrongChecksumList) Len() int {
-    return len(s)
-}
-
-// Sortable interface
-func (s StrongChecksumList) Swap(i, j int) {
-    s[i], s[j] = s[j], s[i]
-}
-
-// Sortable interface
-func (s StrongChecksumList) Less(i, j int) bool {
-    return bytes.Compare(s[i].StrongChecksum, s[j].StrongChecksum) == -1
-}
-
-func (s StrongChecksumList) FindStrongChecksum(strong []byte) (result []chunks.ChunkChecksum) {
-    n := len(s)
-
-    // average length is 1, so fast path comparison
-    if n == 1 {
-        if bytes.Compare(s[0].StrongChecksum, strong) == 0 {
-            return s
-        } else {
-            return nil
-        }
-    }
-
-    // find the first possible occurance
-    first_gte_checksum := sort.Search(
-        n,
-        func(i int) bool {
-            return bytes.Compare(s[i].StrongChecksum, strong) >= 0
-        },
-    )
-
-    // out of bounds
-    if first_gte_checksum == -1 || first_gte_checksum == n {
-        return nil
-    }
-
-    // Somewhere in the middle, but the next one didn't match
-    if bytes.Compare(s[first_gte_checksum].StrongChecksum, strong) != 0 {
-        return nil
-    }
-
-    end := first_gte_checksum + 1
-    for end < n {
-        if bytes.Compare(s[end].StrongChecksum, strong) == 0 {
-            end += 1
-        } else {
-            break
-        }
-
-    }
-
-    return s[first_gte_checksum:end]
 }

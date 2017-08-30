@@ -12,13 +12,13 @@ var T = []byte{1, 2, 3, 4, 5, 6, 7, 8}
 
 func BenchmarkIndex1024(b *testing.B) {
     i := ChecksumIndex{}
-    i.weakChecksumLookup = make([]map[uint64]StrongChecksumList, 256)
+    i.weakChecksumLookup = make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize)
 
     for x := 0; x < 1024; x++ {
         w := uint64(rand.Int63())
 
         if i.weakChecksumLookup[w & indexOffsetFilter] == nil {
-            i.weakChecksumLookup[w & indexOffsetFilter] = make(map[uint64]StrongChecksumList)
+            i.weakChecksumLookup[w & indexOffsetFilter] = make(map[uint64]chunks.StrongChecksumList)
         }
 
         i.weakChecksumLookup[w & indexOffsetFilter][w] = append(
@@ -37,13 +37,13 @@ func BenchmarkIndex1024(b *testing.B) {
 
 func BenchmarkIndex8192(b *testing.B) {
     i := ChecksumIndex{}
-    i.weakChecksumLookup = make([]map[uint64]StrongChecksumList, 256)
+    i.weakChecksumLookup = make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize)
 
     for x := 0; x < 8192; x++ {
         w := uint64(rand.Int63())
 
         if i.weakChecksumLookup[w & indexOffsetFilter] == nil {
-            i.weakChecksumLookup[w & indexOffsetFilter] = make(map[uint64]StrongChecksumList)
+            i.weakChecksumLookup[w & indexOffsetFilter] = make(map[uint64]chunks.StrongChecksumList)
         }
 
         i.weakChecksumLookup[w & indexOffsetFilter][w] = append(
@@ -102,7 +102,7 @@ func BenchmarkIndexAsListLinearSearch8192(b *testing.B) {
 }
 
 func Benchmark_256SplitBinarySearch(b *testing.B) {
-    a := make([][]int, 256)
+    a := make([][]int, indexLookupMapSize)
     for x := 0; x < 8192; x++ {
         i := rand.Int()
         a[i & 0xFF] = append(
@@ -111,7 +111,7 @@ func Benchmark_256SplitBinarySearch(b *testing.B) {
         )
     }
 
-    for x := 0; x < 256; x++ {
+    for x := 0; x < indexLookupMapSize; x++ {
         sort.Ints(a[x])
     }
 
@@ -125,7 +125,7 @@ func Benchmark_256SplitBinarySearch(b *testing.B) {
 
 // This is currently the best performing contender for the index data structure for weak checksum lookups.
 func Benchmark_256Split_Map(b *testing.B) {
-    a := make([]map[int]interface{}, 256)
+    a := make([]map[int]interface{}, indexLookupMapSize)
     for x := 0; x < 8192; x++ {
         i := rand.Int()
         if a[i & 0xFF] == nil {
