@@ -4,7 +4,6 @@ import (
     "bytes"
     "io"
     "io/ioutil"
-    "sort"
     "strings"
     "reflect"
     "testing"
@@ -55,7 +54,7 @@ func stringToReadSeeker(input string) io.ReadSeeker {
 
 func Test_Available_Pool_Addition(t *testing.T) {
     var (
-        poolIDs = []uint{0, 1, 4, 7, 13, 42, 92}
+
         poolMap = map[uint]patcher.BlockRepository{
             0:  &blockrepository.BlockRepositoryBase{},
             1:  &blockrepository.BlockRepositoryBase{},
@@ -67,10 +66,19 @@ func Test_Available_Pool_Addition(t *testing.T) {
         }
         ids blocksources.UintSlice = findAllAvailableRepo(poolMap)
     )
-    sort.Sort(ids)
 
-    if reflect.DeepEqual(ids, poolIDs) {
+    if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
         t.Errorf("findAllAvailableRepoID should find all ids")
+    }
+
+    ids = addRepoToAvailablePool(ids, 4)
+    if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
+        t.Errorf("addRepoToAvailablePool should not add duplicated id")
+    }
+
+    ids = addRepoToAvailablePool(ids, 77)
+    if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 77, 92}) {
+        t.Errorf("addRepoToAvailablePool should add new id")
     }
 }
 
@@ -79,25 +87,24 @@ func Test_Available_Pool_Deletion(t *testing.T) {
         ids blocksources.UintSlice = []uint{0, 1, 4, 7, 13, 42, 92}
     )
 
-    ids = delRepoFromAvailablePool(ids, 4)
-    sort.Sort(ids)
-
+    ids = delRepoFromAvailablePool(ids, 11)
     if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
-        t.Errorf("findAllAvailableRepoID should find all ids")
+        t.Errorf("delRepoFromAvailablePool should not delete absent element %v", ids)
+    }
+
+    ids = delRepoFromAvailablePool(ids, 4)
+    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
+        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
     }
 
     ids = delRepoFromAvailablePool(ids, 7)
-    sort.Sort(ids)
-
     if reflect.DeepEqual(ids, []uint{0, 1, 13, 42, 92}) {
-        t.Errorf("findAllAvailableRepoID should find all ids")
+        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
     }
 
     ids = delRepoFromAvailablePool(ids, 92)
-    sort.Sort(ids)
-
     if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42}) {
-        t.Errorf("findAllAvailableRepoID should find all ids")
+        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
     }
 }
 

@@ -2,11 +2,11 @@ package multisources
 
 import (
     "io"
-//    "sort"
+    "sort"
     "sync"
 
     "github.com/pkg/errors"
-//    "github.com/Redundancy/go-sync/blocksources"
+    "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/patcher"
 )
@@ -155,25 +155,34 @@ func calculateNumberOfCompletedBlocks(resultLength uint64, blockSize uint64) uin
     return uint(completedBlockCount)
 }
 
-func findAllAvailableRepo(repos map[uint]patcher.BlockRepository) []uint {
-    var rID = []uint{}
+func findAllAvailableRepo(repos map[uint]patcher.BlockRepository) blocksources.UintSlice {
+    var rID = blocksources.UintSlice{}
     for id, _ := range repos {
         rID = append(rID, id)
     }
+    sort.Sort(rID)
     return rID
 }
 
-func delRepoFromAvailablePool(rID []uint, id uint) []uint {
+func delRepoFromAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
     var newID = rID[:0]
     for _, r := range rID {
         if r != id {
             newID = append(newID, r)
         }
     }
+    sort.Sort(newID)
     return newID
 }
 
-func addRepoToAvailablePool(rID []uint, id uint) []uint {
+func addRepoToAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
+    for _, r := range rID {
+        if r == id {
+            sort.Sort(rID)
+            return rID
+        }
+    }
     rID = append(rID, id)
+    sort.Sort(rID)
     return rID
 }
