@@ -39,6 +39,7 @@ const (
 )
 
 func NewBlockRepositoryBase(
+    repositoryID uint,
     requester    BlockRepositoryRequester,
     resolver     blocksources.BlockSourceOffsetResolver,
     verifier     blocksources.BlockVerifier,
@@ -47,6 +48,8 @@ func NewBlockRepositoryBase(
         Requester:           requester,
         BlockSourceResolver: resolver,
         Verifier:            verifier,
+        requestChannel:      make(chan patcher.MissingBlockSpan),
+        repositoryID:        repositoryID,
     }
     return b
 }
@@ -56,32 +59,41 @@ type BlockRepositoryBase struct {
     BlockSourceResolver    blocksources.BlockSourceOffsetResolver
     Verifier               blocksources.BlockVerifier
 
-    hasQuit                bool
+    requestChannel         chan patcher.MissingBlockSpan
+    repositoryID           uint
+}
+
+func (b *BlockRepositoryBase) RepositoryID() uint {
+    return b.repositoryID
+}
+
+func (b *BlockRepositoryBase) RequestBlocks(block patcher.MissingBlockSpan) error {
+    b.requestChannel <- block
+    return nil
 }
 
 func (b *BlockRepositoryBase) HandleRequest(
     waiter      *sync.WaitGroup,
     exitC       chan bool,
     errorC      chan error,
-    responseC   chan patcher.BlockReponse,
-    requestC    chan patcher.MissingBlockSpan,
+    responseC   chan patcher.RepositoryResponse,
 ) {
     var (
         state               = STATE_RUNNING
         pendingErrors       = &blocksources.ErrorWatcher{
             ErrorChannel: errorC,
         }
-        pendingResponse     = &blocksources.PendingResponseHelper{
+        pendingResponse     = &PendingResponseHelper{
             ResponseChannel: responseC,
         }
         requestQueue        = make(blocksources.QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
         requestOrdering     = make(blocksources.UintSlice,         0, 1)
-        responseOrdering    = make(blocksources.PendingResponses,  0, 1)
+        responseOrdering    = make(PendingResponses,               0, 1)
     )
 
     defer func() {
-        b.hasQuit = true
+        close(b.requestChannel)
         waiter.Done()
     }()
 
@@ -107,13 +119,13 @@ func (b *BlockRepositoryBase) HandleRequest(
                     lowestResponse := responseOrdering[len(responseOrdering)-1]
                     lowestRequest := requestOrdering[len(requestOrdering)-1]
 
-                    if lowestRequest == lowestResponse.StartBlock {
+                    if lowestRequest == lowestResponse.BlockID {
                         pendingResponse.SetResponse(&lowestResponse)
                     }
                 }
             }
 
-            case newRequest := <- requestC: {
+            case newRequest := <- b.requestChannel: {
                 requestQueue = append(
                     requestQueue,
                     b.BlockSourceResolver.SplitBlockRangeToDesiredSize(
@@ -166,9 +178,10 @@ func (b *BlockRepositoryBase) HandleRequest(
                 }
 
                 responseOrdering = append(responseOrdering,
-                    patcher.BlockReponse{
-                        StartBlock: result.StartBlockID,
-                        Data:       result.Data,
+                    patcher.RepositoryResponse{
+                        RepositoryID:   b.repositoryID,
+                        BlockID:        result.StartBlockID,
+                        Data:           result.Data,
                     })
 
                 // sort high to low

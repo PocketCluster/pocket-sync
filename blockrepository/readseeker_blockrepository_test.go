@@ -16,6 +16,7 @@ func TestReadFirstBlock(t *testing.T) {
     )
     var (
         b = NewReadSeekerBlockRepository(
+            0,
             bytes.NewReader(
                 []byte(STRING_DATA),
             ),
@@ -24,31 +25,29 @@ func TestReadFirstBlock(t *testing.T) {
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
         errorC      = make(chan error)
-        responseC   = make(chan patcher.BlockReponse)
-        requestC    = make(chan patcher.MissingBlockSpan)
+        responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
         close(exitC)
         waiter.Wait()
         close(errorC)
         close(responseC)
-        close(requestC)
     }()
     waiter.Add(1)
     go func() {
-        b.HandleRequest(&waiter, exitC, errorC, responseC, requestC)
+        b.HandleRequest(&waiter, exitC, errorC, responseC)
     }()
 
-    requestC <- patcher.MissingBlockSpan{
+    b.RequestBlocks(patcher.MissingBlockSpan{
             BlockSize:  BLOCK_SIZE,
             StartBlock: 0,
             EndBlock:   0,
-        }
+    })
 
     result := <-responseC
 
-    if result.StartBlock != 0 {
-        t.Errorf("Wrong start block: %v", result.StartBlock)
+    if result.BlockID != 0 {
+        t.Errorf("Wrong start block: %v", result.BlockID)
     }
 
     EXPECTED := STRING_DATA[:BLOCK_SIZE]

@@ -5,11 +5,13 @@ import (
 )
 
 func NewReadSeekerBlockRepository(
-    r blocksources.ReadSeeker,
-    resolver blocksources.BlockSourceOffsetResolver,
+    repositoryID uint,
+    readSeeker   blocksources.ReadSeeker,
+    resolver     blocksources.BlockSourceOffsetResolver,
 ) *BlockRepositoryBase {
     return NewBlockRepositoryBase(
-        blocksources.NewReadSeekerRequester(r),
+        repositoryID,
+        blocksources.NewReadSeekerRequester(readSeeker),
         resolver,
         nil, // TODO: No verifier!
     )

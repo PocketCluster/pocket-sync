@@ -2,11 +2,11 @@ package multisources
 
 import (
     "io"
-    "sort"
+//    "sort"
     "sync"
 
     "github.com/pkg/errors"
-    "github.com/Redundancy/go-sync/blocksources"
+//    "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/patcher"
 )
@@ -33,31 +33,35 @@ func NewMultiSourcePatcher(
     if repositories == nil || len(repositories) == 0 {
         return nil, errors.Errorf("No BlockSource set for obtaining reference blocks")
     }
+
+    rMap := map[uint]patcher.BlockRepository{}
+    for _, r := range repositories {
+        rMap[r.RepositoryID()] = r
+    }
+
     return &MultiSourcePatcher{
         localFile:        localFile,
         output:           output,
-        repositories:     repositories,
+        repositories:     rMap,
         blockSequence:    blockSequence,
 
         repoWaiter:       &sync.WaitGroup{},
         repoExitC:        make(chan bool),
         repoErrorC:       make(chan error),
-        repoResponseC:    make(chan patcher.BlockReponse),
-        repoRequestC:     make(chan patcher.MissingBlockSpan),
+        repoResponseC:    make(chan patcher.RepositoryResponse),
     }, nil
 }
 
 type MultiSourcePatcher struct {
     localFile        io.ReadSeeker
     output           io.Writer
-    repositories     []patcher.BlockRepository
+    repositories     map[uint]patcher.BlockRepository
     blockSequence    chunks.SequentialChecksumList
 
     repoWaiter       *sync.WaitGroup
     repoExitC        chan bool
     repoErrorC       chan error
-    repoResponseC    chan patcher.BlockReponse
-    repoRequestC     chan patcher.MissingBlockSpan
+    repoResponseC    chan patcher.RepositoryResponse
 }
 
 func (m *MultiSourcePatcher) closeRepositories() error {
@@ -65,11 +69,11 @@ func (m *MultiSourcePatcher) closeRepositories() error {
     m.repoWaiter.Wait()
     close(m.repoErrorC)
     close(m.repoResponseC)
-    close(m.repoRequestC)
     return nil
 }
 
 func (m *MultiSourcePatcher) Patch() error {
+/*
     var (
         currentBlock       uint = 0
         endBlock           uint = uint(len(m.blockSequence) - 1)
@@ -81,7 +85,7 @@ func (m *MultiSourcePatcher) Patch() error {
     )
     // launch repository pool
     for _, repo := range m.repositories {
-        go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC, m.repoRequestC)
+        go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
     }
 
     for currentBlock <= endBlock {
@@ -136,7 +140,7 @@ func (m *MultiSourcePatcher) Patch() error {
             }
         }
     }
-
+*/
     return nil
 }
 
@@ -151,3 +155,25 @@ func calculateNumberOfCompletedBlocks(resultLength uint64, blockSize uint64) uin
     return uint(completedBlockCount)
 }
 
+func findAllAvailableRepoID(repos map[uint]patcher.BlockRepository) []uint {
+    var rID = []uint{}
+    for id, _ := range repos {
+        rID = append(rID, id)
+    }
+    return rID
+}
+
+func delRepoFromAvailablePool(rID []uint, id uint) []uint {
+    var newID = rID[:0]
+    for _, r := range rID {
+        if r != id {
+            newID = append(newID, r)
+        }
+    }
+    return newID
+}
+
+func addRepoToAvailablePool(rID []uint, id uint) []uint {
+    rID = append(rID, id)
+    return rID
+}

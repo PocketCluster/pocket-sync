@@ -8,6 +8,7 @@ import (
     "testing"
 
     "golang.org/x/crypto/ripemd160"
+    "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/patcher"
@@ -51,42 +52,29 @@ func stringToReadSeeker(input string) io.ReadSeeker {
 }
 
 func TestPatchingStart(t *testing.T) {
-    LOCAL := bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
-    out := bytes.NewBuffer(nil)
-
-    missing := []patcher.MissingBlockSpan{
-        {
-            BlockSize:    BLOCKSIZE,
-            StartBlock:   0,
-            EndBlock:     2,
-            Hasher:       ripemd160.New(),
-            ExpectedSums: REFERENCE_HASHES[0:3],
-        },
-    }
-
-    matched := []patcher.FoundBlockSpan{
-        {
-            BlockSize:   BLOCKSIZE,
-            StartBlock:  3,
-            EndBlock:    11,
-            MatchOffset: 5,
-        },
-    }
-
-    repos := []patcher.BlockRepository{
-        blockrepository.NewReadSeekerBlockRepository(
-            stringToReadSeeker(REFERENCE_STRING),
-            blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-        ),
-    }
+    var (
+        local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+            blockrepository.NewReadSeekerBlockRepository(
+                0,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+        }
+        chksums = []chunks.ChunkChecksum{
+            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
+            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
+            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
+            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
+        }
+    )
 
     src, err := NewMultiSourcePatcher(
-        LOCAL,
-        repos,
-        missing,
-        matched,
-        1024,
+        local,
         out,
+        repos,
+        chksums,
     )
     if err != nil {
         t.Fatal(err)
@@ -108,42 +96,30 @@ func TestPatchingStart(t *testing.T) {
 }
 
 func Test_PatchingEnd(t *testing.T) {
-    LOCAL := bytes.NewReader([]byte("The quick brown fox jumped over the l4zy d0g"))
-    out := bytes.NewBuffer(nil)
+    var (
+        local = bytes.NewReader([]byte("The quick brown fox jumped over the l4zy d0g"))
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+            blockrepository.NewReadSeekerBlockRepository(
+                0,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+        }
+        chksums = []chunks.ChunkChecksum{
+            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
+            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
+            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
+            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
+        }
 
-    missing := []patcher.MissingBlockSpan{
-        {
-            BlockSize:    BLOCKSIZE,
-            StartBlock:   9,
-            EndBlock:     10,
-            Hasher:       ripemd160.New(),
-            ExpectedSums: REFERENCE_HASHES[0:3],
-        },
-    }
-
-    matched := []patcher.FoundBlockSpan{
-        {
-            BlockSize:   BLOCKSIZE,
-            StartBlock:  0,
-            EndBlock:    8,
-            MatchOffset: 0,
-        },
-    }
-
-    repos := []patcher.BlockRepository{
-        blockrepository.NewReadSeekerBlockRepository(
-            stringToReadSeeker(REFERENCE_STRING),
-            blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-        ),
-    }
+    )
 
     src, err := NewMultiSourcePatcher(
-        LOCAL,
-        repos,
-        missing,
-        matched,
-        1024,
+        local,
         out,
+        repos,
+        chksums,
     )
     if err != nil {
         t.Fatal(err)
@@ -164,35 +140,29 @@ func Test_PatchingEnd(t *testing.T) {
 }
 
 func Test_PatchingEntirelyMissing(t *testing.T) {
-    LOCAL := bytes.NewReader([]byte(""))
-    out := bytes.NewBuffer(nil)
-
-    missing := []patcher.MissingBlockSpan{
-        {
-            BlockSize:    BLOCKSIZE,
-            StartBlock:   0,
-            EndBlock:     10,
-            Hasher:       ripemd160.New(),
-            ExpectedSums: REFERENCE_HASHES[0:10],
-        },
-    }
-
-    matched := []patcher.FoundBlockSpan{}
-
-    repos := []patcher.BlockRepository{
-        blockrepository.NewReadSeekerBlockRepository(
-            stringToReadSeeker(REFERENCE_STRING),
-            blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-        ),
-    }
+    var (
+        local = bytes.NewReader([]byte(""))
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+            blockrepository.NewReadSeekerBlockRepository(
+                0,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+        }
+        chksums = []chunks.ChunkChecksum{
+            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
+            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
+            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
+            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
+        }
+    )
 
     src, err := NewMultiSourcePatcher(
-        LOCAL,
-        repos,
-        missing,
-        matched,
-        1024,
+        local,
         out,
+        repos,
+        chksums,
     )
     if err != nil {
         t.Fatal(err)
