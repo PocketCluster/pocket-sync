@@ -26,7 +26,8 @@ import (
     "bytes"
     "encoding/binary"
     "sort"
-    
+
+    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/chunks"
 )
 
@@ -34,6 +35,7 @@ const (
     // (2017/08/26) weakChecksumLookup map will have 256 elements with assumption that
     // each transmission block size would be ~ 10MB and the total size would be less than 2.5GB
     indexOffsetFilter uint64 = 0xFF
+    indexLookupMapSize int = 256
 )
 
 /*
@@ -44,6 +46,7 @@ const (
  */
 type ChecksumIndex struct {
     weakChecksumLookup     []map[uint64]StrongChecksumList
+    checkSumSequence       StrongChecksumList
     AverageStrongLength    float64
     BlockCount             int
     MaxStrongLength        int
@@ -53,15 +56,28 @@ type ChecksumIndex struct {
 // Builds an index in which chunks can be found, with their corresponding offsets
 // We use this for the
 func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
+    // for an empty checksums, it's not necessary to create anything
+    if checksums == nil || len(checksums) == 0 {
+        return nil
+    }
+
     var (
         n = &ChecksumIndex{
             BlockCount:         len(checksums),
-            weakChecksumLookup: make([]map[uint64]StrongChecksumList, 256),
+            weakChecksumLookup: make([]map[uint64]StrongChecksumList, indexLookupMapSize),
+            checkSumSequence:   make(StrongChecksumList, 0, 1),
         }
         sum = 0
         count = 0
     )
 
+    // copy/ append/ sort the checksum slice
+    chksumCopy := make(StrongChecksumList, 0, len(checksums))
+    copy(chksumCopy, checksums)
+    n.checkSumSequence = append(n.checkSumSequence, chksumCopy...)
+    sort.Sort(n.checkSumSequence)
+
+    // create weak checksum map
     for _, chunk := range checksums {
         weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
         arrayOffset := weakChecksumAsInt & indexOffsetFilter
@@ -74,7 +90,6 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
             n.weakChecksumLookup[arrayOffset][weakChecksumAsInt],
             chunk,
         )
-
     }
 
     for _, a := range n.weakChecksumLookup {
@@ -92,6 +107,61 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
     n.AverageStrongLength = float64(sum) / float64(count)
 
     return n
+}
+
+func NewChecksumIndex() *ChecksumIndex {
+    return  &ChecksumIndex{
+        weakChecksumLookup: make([]map[uint64]StrongChecksumList, indexLookupMapSize),
+        checkSumSequence:   make(StrongChecksumList, 0, 1),
+    }
+}
+
+func (index *ChecksumIndex) AppendChecksums(checksums []chunks.ChunkChecksum) error {
+    if checksums == nil || len(checksums) == 0 {
+        return errors.Errorf("unable to append an empty checksum slice")
+    }
+
+    var (
+        sum = 0
+        count = 0
+    )
+
+    // copy/ append/ sort the checksum slice
+    chksumCopy := make(StrongChecksumList, 0, len(checksums))
+    copy(chksumCopy, checksums)
+    index.checkSumSequence = append(index.checkSumSequence, chksumCopy...)
+    sort.Sort(index.checkSumSequence)
+
+    // create weak checksum map
+    for _, chunk := range checksums {
+        weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
+        arrayOffset := weakChecksumAsInt & indexOffsetFilter
+
+        if index.weakChecksumLookup[arrayOffset] == nil {
+            index.weakChecksumLookup[arrayOffset] = make(map[uint64]StrongChecksumList)
+        }
+
+        index.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
+            index.weakChecksumLookup[arrayOffset][weakChecksumAsInt],
+            chunk,
+        )
+    }
+
+    for _, a := range index.weakChecksumLookup {
+        for _, c := range a {
+            sort.Sort(c)
+            if len(c) > index.MaxStrongLength {
+                index.MaxStrongLength = len(c)
+            }
+            sum += len(c)
+            count += 1
+            index.Count += len(c)
+        }
+    }
+
+    index.AverageStrongLength = float64(sum) / float64(count)
+    index.BlockCount += len(checksums)
+    return nil
 }
 
 func (index *ChecksumIndex) WeakCount() int {
