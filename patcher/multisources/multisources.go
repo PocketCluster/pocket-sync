@@ -155,7 +155,7 @@ func calculateNumberOfCompletedBlocks(resultLength uint64, blockSize uint64) uin
     return uint(completedBlockCount)
 }
 
-func findAllAvailableRepoID(repos map[uint]patcher.BlockRepository) []uint {
+func findAllAvailableRepo(repos map[uint]patcher.BlockRepository) []uint {
     var rID = []uint{}
     for id, _ := range repos {
         rID = append(rID, id)

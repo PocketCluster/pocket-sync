@@ -4,7 +4,9 @@ import (
     "bytes"
     "io"
     "io/ioutil"
+    "sort"
     "strings"
+    "reflect"
     "testing"
 
     "golang.org/x/crypto/ripemd160"
@@ -49,6 +51,54 @@ func init() {
 
 func stringToReadSeeker(input string) io.ReadSeeker {
     return bytes.NewReader([]byte(input))
+}
+
+func Test_Available_Pool_Addition(t *testing.T) {
+    var (
+        poolIDs = []uint{0, 1, 4, 7, 13, 42, 92}
+        poolMap = map[uint]patcher.BlockRepository{
+            0:  &blockrepository.BlockRepositoryBase{},
+            1:  &blockrepository.BlockRepositoryBase{},
+            4:  &blockrepository.BlockRepositoryBase{},
+            7:  &blockrepository.BlockRepositoryBase{},
+            13: &blockrepository.BlockRepositoryBase{},
+            42: &blockrepository.BlockRepositoryBase{},
+            92: &blockrepository.BlockRepositoryBase{},
+        }
+        ids blocksources.UintSlice = findAllAvailableRepo(poolMap)
+    )
+    sort.Sort(ids)
+
+    if reflect.DeepEqual(ids, poolIDs) {
+        t.Errorf("findAllAvailableRepoID should find all ids")
+    }
+}
+
+func Test_Available_Pool_Deletion(t *testing.T) {
+    var (
+        ids blocksources.UintSlice = []uint{0, 1, 4, 7, 13, 42, 92}
+    )
+
+    ids = delRepoFromAvailablePool(ids, 4)
+    sort.Sort(ids)
+
+    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
+        t.Errorf("findAllAvailableRepoID should find all ids")
+    }
+
+    ids = delRepoFromAvailablePool(ids, 7)
+    sort.Sort(ids)
+
+    if reflect.DeepEqual(ids, []uint{0, 1, 13, 42, 92}) {
+        t.Errorf("findAllAvailableRepoID should find all ids")
+    }
+
+    ids = delRepoFromAvailablePool(ids, 92)
+    sort.Sort(ids)
+
+    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42}) {
+        t.Errorf("findAllAvailableRepoID should find all ids")
+    }
 }
 
 func TestPatchingStart(t *testing.T) {
