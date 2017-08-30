@@ -68,11 +68,10 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
         }
         sum = 0
         count = 0
-        cslen = len(checksums)
     )
 
     // copy/ append/ sort the checksum slice
-    chksumCopy := make(chunks.SequentialChecksumList, cslen, cslen)
+    chksumCopy := make(chunks.SequentialChecksumList, len(checksums))
     copy(chksumCopy, checksums)
     sort.Sort(chksumCopy)
     n.checkSumSequence = chksumCopy
@@ -124,11 +123,10 @@ func (index *ChecksumIndex) AppendChecksums(checksums []chunks.ChunkChecksum) er
     var (
         sum = 0
         count = 0
-        cslen = len(checksums)
     )
 
     // copy/ append/ sort the checksum slice
-    chksumCopy := make(chunks.SequentialChecksumList, cslen, cslen)
+    chksumCopy := make(chunks.SequentialChecksumList, len(checksums))
     copy(chksumCopy, checksums)
     index.checkSumSequence = append(index.checkSumSequence, chksumCopy...)
     sort.Sort(index.checkSumSequence)

@@ -243,6 +243,12 @@ func TestSequentialBlocksInIndex(t *testing.T) {
         if ci.SequentialChecksumList()[i].ChunkOffset != uint(i) {
             t.Fatalf("Incorrect checksums index found: %v", strongs)
         }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].WeakChecksum, weakSum) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
     }
 }
 
@@ -289,6 +295,12 @@ func TestPartialSequentialBlocksInIndex(t *testing.T) {
         }
         if ci.SequentialChecksumList()[i].ChunkOffset != uint(i) {
             t.Fatalf("Incorrect checksums index found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].WeakChecksum, weakSum) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
         }
     }
 }
