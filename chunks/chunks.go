@@ -16,7 +16,7 @@ import (
  * when comparing unless the weak checksum matches
  */
 type ChunkChecksum struct {
-    // an offset in terms of chunk count
+    // an offset in terms of chunk count (2017/08/30 : This is in fact block id)
     ChunkOffset    uint
     // the size of the block
     Size           int64
