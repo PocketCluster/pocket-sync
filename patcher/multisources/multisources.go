@@ -110,7 +110,7 @@ func (m *MultiSourcePatcher) Patch() error {
             case result := <- m.repoResponseC: {
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
-                sort.Sort(responseOrdering)
+                sort.Sort(sort.Reverse(responseOrdering))
 
                 // put back the repo id into available pool
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
@@ -118,7 +118,7 @@ func (m *MultiSourcePatcher) Patch() error {
 
             case alertPendingResponse(m.responseReadyC, requestOrdering, responseOrdering) <- patcher.RepositoryResponse{}: {
 
-                result := responseOrdering[0]
+                result := responseOrdering[len(responseOrdering) - 1]
                 if _, err := m.output.Write(result.Data); err != nil {
                     log.Errorf("Could not write data to output: %v", err)
                 }
@@ -127,9 +127,8 @@ func (m *MultiSourcePatcher) Patch() error {
                 currentBlock = result.BlockID + 1
 
                 // remove the lowest response queue
-                requestOrdering  = requestOrdering[1:]
-                responseOrdering = responseOrdering[1:]
-
+                requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
+                responseOrdering = responseOrdering[:len(responseOrdering) - 1]
             }
 
             default: {
@@ -155,7 +154,7 @@ func (m *MultiSourcePatcher) Patch() error {
                         requestOrdering = append(requestOrdering, missing.ChunkOffset)
                     }
 
-                    sort.Sort(requestOrdering)
+                    sort.Sort(sort.Reverse(requestOrdering))
                 }
             }
         }
@@ -205,7 +204,8 @@ func alertPendingResponse(
         return nil
     }
 
-    if request[0] == response[0].BlockID {
+    // see if the lowest order is the same as the lowest response block
+    if request[len(request)-1] == response[len(response)-1].BlockID {
         return readyC
     }
 
