@@ -6,6 +6,7 @@ import (
     "sort"
     "sync"
 
+    log "github.com/Sirupsen/logrus"
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/chunks"
@@ -101,6 +102,11 @@ func (m *MultiSourcePatcher) Patch() error {
     for currentBlock <= endBlock {
         select {
 
+            // handle error first
+            case err := <- m.repoErrorC: {
+                return errors.Errorf("Failed to read from reference file: %v", err)
+            }
+
             case result := <- m.repoResponseC: {
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
@@ -112,10 +118,18 @@ func (m *MultiSourcePatcher) Patch() error {
 
             case alertPendingResponse(m.responseReadyC, requestOrdering, responseOrdering) <- patcher.RepositoryResponse{}: {
 
-            }
+                result := responseOrdering[0]
+                if _, err := m.output.Write(result.Data); err != nil {
+                    log.Errorf("Could not write data to output: %v", err)
+                }
 
-            case err := <- m.repoErrorC: {
-                return errors.Errorf("Failed to read from reference file: %v", err)
+                // move current block to the next
+                currentBlock = result.BlockID + 1
+
+                // remove the lowest response queue
+                requestOrdering  = requestOrdering[1:]
+                responseOrdering = responseOrdering[1:]
+
             }
 
             default: {
