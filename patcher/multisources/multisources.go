@@ -84,36 +84,14 @@ func (m *MultiSourcePatcher) Patch() error {
         requestOrdering     = make(blocksources.UintSlice, 0, poolSize)
         responseOrdering    = make(patcher.StackedReponse, 0, poolSize)
     )
+
     // launch repository pool
     for _, repo := range m.repositories {
         go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
     }
 
+    // loop until current block reaches to end
     for currentBlock <= endBlock {
-
-        poolSize = len(repositoryPool)
-        if 0 < poolSize {
-
-            for i := 0; i < poolSize; i++ {
-                missing := m.blockSequence[currentBlock + uint(i)]
-                requestOrdering = append(requestOrdering, missing.ChunkOffset)
-
-                pIndex := rand.Intn(poolSize - i)
-                pID    := repositoryPool[pIndex]
-                repositoryPool = delIdentityFromAvailablePool(repositoryPool, pID)
-
-                // We'll request only one block to a repository.
-                // It might/might not splitted into smaller request size
-                m.repositories[pID].RequestBlocks(patcher.MissingBlockSpan{
-                    BlockSize:     missing.Size,
-                    StartBlock:    missing.ChunkOffset,
-                    EndBlock:      missing.ChunkOffset,
-                })
-            }
-
-            sort.Sort(requestOrdering)
-        }
-
         select {
 
             case result := <-m.repoResponseC: {
@@ -139,6 +117,33 @@ func (m *MultiSourcePatcher) Patch() error {
 
             case err := <-m.repoErrorC: {
                 return errors.Errorf("Failed to read from reference file: %v", err)
+            }
+
+            default: {
+                poolSize = len(repositoryPool)
+                if 0 < poolSize {
+
+                    for i := 0; i < poolSize; i++ {
+                        var (
+                            missing = m.blockSequence[currentBlock + uint(i)]
+                            pIndex  = rand.Intn(poolSize - i)
+                            poolID  = repositoryPool[pIndex]
+                        )
+
+                        repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
+
+                        // We'll request only one block to a repository.
+                        m.repositories[poolID].RequestBlocks(patcher.MissingBlockSpan{
+                            BlockSize:     missing.Size,
+                            StartBlock:    missing.ChunkOffset,
+                            EndBlock:      missing.ChunkOffset,
+                        })
+
+                        requestOrdering = append(requestOrdering, missing.ChunkOffset)
+                    }
+
+                    sort.Sort(requestOrdering)
+                }
             }
         }
     }
