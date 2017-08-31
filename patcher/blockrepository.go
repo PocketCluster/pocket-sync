@@ -37,3 +37,17 @@ type RepositoryResponse struct {
     BlockID         uint
     Data            []byte
 }
+
+type StackedReponse []RepositoryResponse
+
+func (r StackedReponse) Len() int {
+    return len(r)
+}
+
+func (r StackedReponse) Swap(i, j int) {
+    r[i], r[j] = r[j], r[i]
+}
+
+func (r StackedReponse) Less(i, j int) bool {
+    return r[i].BlockID < r[j].BlockID
+}

@@ -64,21 +64,21 @@ func Test_Available_Pool_Addition(t *testing.T) {
             42: &blockrepository.BlockRepositoryBase{},
             92: &blockrepository.BlockRepositoryBase{},
         }
-        ids blocksources.UintSlice = findAllAvailableRepo(poolMap)
+        ids blocksources.UintSlice = makeRepositoryPoolFromMap(poolMap)
     )
 
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
         t.Errorf("findAllAvailableRepoID should find all ids")
     }
 
-    ids = addRepoToAvailablePool(ids, 4)
+    ids = addIdentityToAvailablePool(ids, 4)
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
-        t.Errorf("addRepoToAvailablePool should not add duplicated id")
+        t.Errorf("addIdentityToAvailablePool should not add duplicated id")
     }
 
-    ids = addRepoToAvailablePool(ids, 77)
+    ids = addIdentityToAvailablePool(ids, 77)
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 77, 92}) {
-        t.Errorf("addRepoToAvailablePool should add new id")
+        t.Errorf("addIdentityToAvailablePool should add new id")
     }
 }
 
@@ -87,24 +87,24 @@ func Test_Available_Pool_Deletion(t *testing.T) {
         ids blocksources.UintSlice = []uint{0, 1, 4, 7, 13, 42, 92}
     )
 
-    ids = delRepoFromAvailablePool(ids, 11)
+    ids = delIdentityFromAvailablePool(ids, 11)
     if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
-        t.Errorf("delRepoFromAvailablePool should not delete absent element %v", ids)
+        t.Errorf("delIdentityFromAvailablePool should not delete absent element %v", ids)
     }
 
-    ids = delRepoFromAvailablePool(ids, 4)
+    ids = delIdentityFromAvailablePool(ids, 4)
     if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
-        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
+        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
     }
 
-    ids = delRepoFromAvailablePool(ids, 7)
+    ids = delIdentityFromAvailablePool(ids, 7)
     if reflect.DeepEqual(ids, []uint{0, 1, 13, 42, 92}) {
-        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
+        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
     }
 
-    ids = delRepoFromAvailablePool(ids, 92)
+    ids = delIdentityFromAvailablePool(ids, 92)
     if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42}) {
-        t.Errorf("delRepoFromAvailablePool only delete one id %v", ids)
+        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
     }
 }
 

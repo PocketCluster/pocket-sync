@@ -2,6 +2,7 @@ package multisources
 
 import (
     "io"
+    "math/rand"
     "sort"
     "sync"
 
@@ -73,15 +74,15 @@ func (m *MultiSourcePatcher) closeRepositories() error {
 }
 
 func (m *MultiSourcePatcher) Patch() error {
-/*
     var (
-        currentBlock       uint = 0
-        endBlock           uint = uint(len(m.blockSequence) - 1)
-        poolSize           int  = len(m.repositories)
+        currentBlock   uint = 0
+        endBlock       uint = uint(len(m.blockSequence) - 1)
+        repositoryPool      = makeRepositoryPoolFromMap(m.repositories)
+        poolSize            = len(repositoryPool)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering    = make(blocksources.UintSlice, 0, poolSize)
-        responseOrdering   = make([]patcher.BlockReponse, 0, poolSize)
+        requestOrdering     = make(blocksources.UintSlice, 0, poolSize)
+        responseOrdering    = make(patcher.StackedReponse, 0, poolSize)
     )
     // launch repository pool
     for _, repo := range m.repositories {
@@ -90,49 +91,50 @@ func (m *MultiSourcePatcher) Patch() error {
 
     for currentBlock <= endBlock {
 
-        // 1. pool available | 2. available slot in the pool
-        if 0 < poolSize && len(requestOrdering) == 0 {
+        poolSize = len(repositoryPool)
+        if 0 < poolSize {
 
             for i := 0; i < poolSize; i++ {
                 missing := m.blockSequence[currentBlock + uint(i)]
                 requestOrdering = append(requestOrdering, missing.ChunkOffset)
-                sort.Sort(sort.Reverse(requestOrdering))
+
+                pIndex := rand.Intn(poolSize - i)
+                pID    := repositoryPool[pIndex]
+                repositoryPool = delIdentityFromAvailablePool(repositoryPool, pID)
 
                 // We'll request only one block to a repository.
                 // It might/might not splitted into smaller request size
-                m.repoRequestC <- patcher.MissingBlockSpan{
+                m.repositories[pID].RequestBlocks(patcher.MissingBlockSpan{
                     BlockSize:     missing.Size,
                     StartBlock:    missing.ChunkOffset,
                     EndBlock:      missing.ChunkOffset,
-                }
+                })
             }
+
+            sort.Sort(requestOrdering)
         }
 
         select {
 
             case result := <-m.repoResponseC: {
-                // error check
-                if result.StartBlock != currentBlock {
-                    return errors.Errorf("Received unexpected block: %v", result.StartBlock)
-                }
-                _, err := m.output.Write(result.Data)
-                if err != nil {
-                    return errors.Errorf("Could not write data to output: %v", err)
-                }
 
-                // calculate # of blocks completed
-                completed := calculateNumberOfCompletedBlocks(uint64(len(result.Data)), uint64(firstMissing.BlockSize))
-                if completed != (firstMissing.EndBlock - firstMissing.StartBlock) + 1 {
-                    return errors.Errorf(
-                        "Unexpected reponse length from remote source: blocks %v-%v (got %v blocks)",
-                        firstMissing.StartBlock,
-                        firstMissing.EndBlock,
-                        completed)
-                }
+                // find the lowest id
+                lowestRequest := requestOrdering[0]
 
-                // move iterator
-                currentBlock += completed
-                m.requiredRemoteBlocks = m.requiredRemoteBlocks[1:]
+                // remove received id from
+                delIdentityFromAvailablePool(requestOrdering, result.BlockID)
+
+                // enqueue result to response & sort
+                responseOrdering = append(responseOrdering, result)
+                sort.Sort(responseOrdering)
+
+                // put back the repo id into pool
+                repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
+
+                // if this is the lowest block, then write it to output
+                if lowestRequest == result.BlockID {
+
+                }
             }
 
             case err := <-m.repoErrorC: {
@@ -140,22 +142,11 @@ func (m *MultiSourcePatcher) Patch() error {
             }
         }
     }
-*/
+
     return nil
 }
 
-func calculateNumberOfCompletedBlocks(resultLength uint64, blockSize uint64) uint {
-    var completedBlockCount uint64 = resultLength / blockSize
-
-    // round up in the case of a partial block (last block may not be full sized)
-    if resultLength % blockSize != 0 {
-        completedBlockCount += 1
-    }
-
-    return uint(completedBlockCount)
-}
-
-func findAllAvailableRepo(repos map[uint]patcher.BlockRepository) blocksources.UintSlice {
+func makeRepositoryPoolFromMap(repos map[uint]patcher.BlockRepository) blocksources.UintSlice {
     var rID = blocksources.UintSlice{}
     for id, _ := range repos {
         rID = append(rID, id)
@@ -164,7 +155,7 @@ func findAllAvailableRepo(repos map[uint]patcher.BlockRepository) blocksources.U
     return rID
 }
 
-func delRepoFromAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
+func delIdentityFromAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
     var newID = rID[:0]
     for _, r := range rID {
         if r != id {
@@ -175,7 +166,7 @@ func delRepoFromAvailablePool(rID blocksources.UintSlice, id uint) blocksources.
     return newID
 }
 
-func addRepoToAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
+func addIdentityToAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
     for _, r := range rID {
         if r == id {
             sort.Sort(rID)
