@@ -46,6 +46,8 @@ func NewMultiSourcePatcher(
         repositories:     rMap,
         blockSequence:    blockSequence,
 
+        responseReadyC:   make(chan patcher.RepositoryResponse),
+
         repoWaiter:       &sync.WaitGroup{},
         repoExitC:        make(chan bool),
         repoErrorC:       make(chan error),
@@ -54,20 +56,25 @@ func NewMultiSourcePatcher(
 }
 
 type MultiSourcePatcher struct {
-    localFile        io.ReadSeeker
-    output           io.Writer
-    repositories     map[uint]patcher.BlockRepository
-    blockSequence    chunks.SequentialChecksumList
+    localFile         io.ReadSeeker
+    output            io.Writer
+    repositories      map[uint]patcher.BlockRepository
+    blockSequence     chunks.SequentialChecksumList
 
-    repoWaiter       *sync.WaitGroup
-    repoExitC        chan bool
-    repoErrorC       chan error
-    repoResponseC    chan patcher.RepositoryResponse
+    // response alinging
+    responseReadyC    chan patcher.RepositoryResponse
+
+    // repository handling
+    repoWaiter        *sync.WaitGroup
+    repoExitC         chan bool
+    repoErrorC        chan error
+    repoResponseC     chan patcher.RepositoryResponse
 }
 
 func (m *MultiSourcePatcher) closeRepositories() error {
     close(m.repoExitC)
     m.repoWaiter.Wait()
+    close(m.responseReadyC)
     close(m.repoErrorC)
     close(m.repoResponseC)
     return nil
@@ -94,28 +101,20 @@ func (m *MultiSourcePatcher) Patch() error {
     for currentBlock <= endBlock {
         select {
 
-            case result := <-m.repoResponseC: {
-
-                // find the lowest id
-                lowestRequest := requestOrdering[0]
-
-                // remove received id from
-                delIdentityFromAvailablePool(requestOrdering, result.BlockID)
-
-                // enqueue result to response & sort
+            case result := <- m.repoResponseC: {
+                // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
                 sort.Sort(responseOrdering)
 
-                // put back the repo id into pool
+                // put back the repo id into available pool
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
-
-                // if this is the lowest block, then write it to output
-                if lowestRequest == result.BlockID {
-
-                }
             }
 
-            case err := <-m.repoErrorC: {
+            case alertPendingResponse(m.responseReadyC, requestOrdering, responseOrdering) <- patcher.RepositoryResponse{}: {
+
+            }
+
+            case err := <- m.repoErrorC: {
                 return errors.Errorf("Failed to read from reference file: %v", err)
             }
 
@@ -181,4 +180,20 @@ func addIdentityToAvailablePool(rID blocksources.UintSlice, id uint) blocksource
     rID = append(rID, id)
     sort.Sort(rID)
     return rID
+}
+
+func alertPendingResponse(
+    readyC      chan patcher.RepositoryResponse,
+    request     blocksources.UintSlice,
+    response    patcher.StackedReponse,
+) chan <- patcher.RepositoryResponse {
+    if len(request) == 0 || len(response) == 0 {
+        return nil
+    }
+
+    if request[0] == response[0].BlockID {
+        return readyC
+    }
+
+    return nil
 }
