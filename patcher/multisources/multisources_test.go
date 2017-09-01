@@ -98,7 +98,6 @@ func buildSequentialChecksum(refBlks []string, blocksize int) chunks.SequentialC
     return chksum
 }
 
-
 func Test_Available_Pool_Addition(t *testing.T) {
     var (
         poolMap = map[uint]patcher.BlockRepository{
@@ -221,6 +220,81 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
                 stringToReadSeeker(REFERENCE_STRING),
                 blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
             ),
+        }
+    )
+
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        REFERENCE_CHKSEQ,
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    err = src.Patch()
+    if err != nil {
+        t.Fatal(err)
+    }
+    src.closeRepositories()
+
+    if result, err := ioutil.ReadAll(out); err == nil {
+        t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
+        if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
+            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
+        }
+    } else {
+        t.Fatal(err)
+    }
+}
+
+func Test_MultiRandom_Source_Patching(t *testing.T) {
+    setup()
+    defer clean()
+
+    var (
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    t.Logf("FunctionRequester start %d", start)
+
+                    return []byte{0, 0}, nil
+                }),
+                blocksources.MakeNullFixedSizeResolver(1),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                1,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    t.Logf("FunctionRequester start %d", start)
+
+                    return []byte{0, 0}, nil
+                }),
+                blocksources.MakeNullFixedSizeResolver(1),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                2,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    t.Logf("FunctionRequester start %d", start)
+
+                    return []byte{0, 0}, nil
+                }),
+                blocksources.MakeNullFixedSizeResolver(1),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                3,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    t.Logf("FunctionRequester start %d", start)
+
+                    return []byte{0, 0}, nil
+                }),
+                blocksources.MakeNullFixedSizeResolver(1),
+                nil),
         }
     )
 

@@ -10,34 +10,6 @@ import (
     "github.com/Redundancy/go-sync/blocksources"
 )
 
-//-----------------------------------------------------------------------------
-type erroringRequester struct{}
-type testError struct{}
-
-func (e *testError) Error() string {
-    return "test"
-}
-
-func (e *erroringRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
-    return nil, &testError{}
-}
-
-func (e *erroringRequester) IsFatal(err error) bool {
-    return true
-}
-
-//-----------------------------------------------------------------------------
-type FunctionRequester func(a, b int64) ([]byte, error)
-
-func (f FunctionRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
-    return f(startOffset, endOffset)
-}
-
-func (f FunctionRequester) IsFatal(err error) bool {
-    return true
-}
-
-//-----------------------------------------------------------------------------
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(0, nil,
@@ -66,7 +38,7 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
 func Test_BlockRepositoryBase_Error(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(0,
-            &erroringRequester{},
+            &blocksources.ErroringRequester{},
             blocksources.MakeNullFixedSizeResolver(4),
             nil)
         waiter      = sync.WaitGroup{}
@@ -103,7 +75,7 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
     var (
         expected = []byte("test")
         b = NewBlockRepositoryBase(0,
-            FunctionRequester(func(start, end int64) (data []byte, err error) {
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return expected, nil
             }),
             blocksources.MakeNullFixedSizeResolver(4),
@@ -146,7 +118,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
         content = []byte("test")
 
         b = NewBlockRepositoryBase(0,
-            FunctionRequester(func(start, end int64) (data []byte, err error) {
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return content[start:end], nil
             }),
             blocksources.MakeNullFixedSizeResolver(2),
@@ -201,7 +173,7 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
         }
 
         b = NewBlockRepositoryBase(0,
-            FunctionRequester(func(start, end int64) (data []byte, err error) {
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 // read from the channel based on the start
                 <-(channeler[start])
                 return content[start:end], nil
@@ -262,7 +234,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
         waiterC      = make(chan bool)
 
         b = NewBlockRepositoryBase(0,
-            FunctionRequester(func(start, end int64) (data []byte, err error) {
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 t.Logf("FunctionRequester start %d", start)
                 counterC <- 1
                 call_counter += 1

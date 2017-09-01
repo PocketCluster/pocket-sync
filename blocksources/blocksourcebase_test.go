@@ -9,35 +9,6 @@ import (
     "github.com/Redundancy/go-sync/patcher"
 )
 
-//-----------------------------------------------------------------------------
-type erroringRequester struct{}
-type testError struct{}
-
-func (e *testError) Error() string {
-    return "test"
-}
-
-func (e *erroringRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
-    return nil, &testError{}
-}
-
-func (e *erroringRequester) IsFatal(err error) bool {
-    return true
-}
-
-//-----------------------------------------------------------------------------
-type FunctionRequester func(a, b int64) ([]byte, error)
-
-func (f FunctionRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
-    return f(startOffset, endOffset)
-}
-
-func (f FunctionRequester) IsFatal(err error) bool {
-    return true
-}
-
-//-----------------------------------------------------------------------------
-
 func init() {
     //if runtime.GOMAXPROCS(0) == 1 {
     //runtime.GOMAXPROCS(4)
@@ -70,7 +41,7 @@ func TestErrorWatcher(t *testing.T) {
         t.Errorf("Channel should be nil when created")
     }
 
-    e.SetError(&testError{})
+    e.SetError(&TestError{})
 
     if e.SendIfSet() == nil {
         t.Errorf("Channel should be non-nil when error is set")
@@ -82,7 +53,7 @@ func TestErrorWatcher(t *testing.T) {
 
 func TestBlockSourceBaseError(t *testing.T) {
     b := NewBlockSourceBase(
-        &erroringRequester{},
+        &ErroringRequester{},
         MakeNullFixedSizeResolver(4),
         nil,
         1,
