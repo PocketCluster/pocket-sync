@@ -108,7 +108,7 @@ func (m *MultiSourcePatcher) Patch() error {
                     pIndex  = rand.Intn(poolSize - i)
                     poolID  = repositoryPool[pIndex]
                 )
-                log.Debugf("[PATCHER] missing blk %v | pool %v | pool index %v | pool id %v", missing, repositoryPool, pIndex, poolID)
+                log.Debugf("[PATCHER] missing blk %v | pool %v | pool index %v | pool id %v", missing.ChunkOffset, repositoryPool, pIndex, poolID)
                 repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
 
                 // We'll request only one block to a repository.
@@ -117,7 +117,7 @@ func (m *MultiSourcePatcher) Patch() error {
                     StartBlock:    missing.ChunkOffset,
                     EndBlock:      missing.ChunkOffset,
                 })
-                log.Debugf("[PATCHER] missing blk %v | pool %v | requested pool #%v | currentBlock %v", missing, repositoryPool, pIndex, currentBlock)
+                log.Debugf("[PATCHER] pool %v | requested pool #%v | currentBlock %v", repositoryPool, pIndex, currentBlock)
 
                 requestOrdering = append(requestOrdering, missing.ChunkOffset)
 
@@ -128,6 +128,10 @@ func (m *MultiSourcePatcher) Patch() error {
             sort.Sort(sort.Reverse(requestOrdering))
         }
 
+        // Once we satuated pool with request, we'd like to see if response can be written into output.
+        // in "request" -> "write to disk" sequence could give some some window where network & disk ops going same time.
+        // if 0 < len(requestOrdering) && 0 < len(responseOrdering) {}
+
         select {
             // handle error first
             case err := <- m.repoErrorC: {
@@ -136,7 +140,7 @@ func (m *MultiSourcePatcher) Patch() error {
             }
 
             case result := <- m.repoResponseC: {
-                log.Debugf("[PATCHER] received result %v | payload [%s]", result, string(result.Data))
+                log.Debugf("[PATCHER] response blk %v [%s]", result.BlockID, string(result.Data))
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
                 sort.Sort(sort.Reverse(responseOrdering))
@@ -144,27 +148,28 @@ func (m *MultiSourcePatcher) Patch() error {
                 // put back the repo id into available pool
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
 
-                // now see if this is to be written into output
-                lowestRequest := requestOrdering[len(requestOrdering) - 1]
-                if lowestRequest != responseOrdering[len(responseOrdering) - 1].BlockID {
-                    continue
-                }
+                // if there is subsequent saved responses, write it all down in a batch
+                var (
+                    responseSize   = len(responseOrdering) // this needs to be fixated for the loop below. Don't use it otherwise.
+                    lowestRequest  = requestOrdering[len(requestOrdering) - 1]
+                    lowestResponse = responseOrdering[len(responseOrdering) - 1].BlockID
+                )
+                if lowestRequest == lowestResponse {
 
-                // if there is subsequent saved responses,
-                for i := 0; i < len(responseOrdering); i++ {
+                    for i := 0; i < responseSize; i++ {
+                        result := responseOrdering[len(responseOrdering) - 1]
+                        if _, err := m.output.Write(result.Data); err != nil {
+                            log.Errorf("[PATCHER] Could not write data to output: %v", err)
+                        }
 
-                    result := responseOrdering[len(responseOrdering) - 1]
-                    if _, err := m.output.Write(result.Data); err != nil {
-                        log.Errorf("[PATCHER] Could not write data to output: %v", err)
-                    }
+                        // remove the lowest response queue
+                        requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
+                        responseOrdering = responseOrdering[:len(responseOrdering) - 1]
 
-                    // remove the lowest response queue
-                    requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
-                    responseOrdering = responseOrdering[:len(responseOrdering) - 1]
-
-                    // Loop if the next block is subsequent block. Halt otherwise.
-                    if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (lowestRequest + uint(i) + 1) {
-                        break
+                        // Loop if the next responded block is subsequent block. Halt otherwise.
+                        if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (lowestRequest + uint(i) + 1) {
+                            break
+                        }
                     }
                 }
             }
