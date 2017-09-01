@@ -100,7 +100,7 @@ func (m *MultiSourcePatcher) Patch() error {
 
         poolSize = len(repositoryPool)
         if 0 < poolSize {
-            log.Debugf("\n[PATCHER] Pool available %d", poolSize)
+            log.Debugf("[PATCHER] Pool available %d", poolSize)
 
             for i := 0; i < poolSize; i++ {
                 var (
@@ -151,7 +151,7 @@ func (m *MultiSourcePatcher) Patch() error {
                 }
 
                 // if there is subsequent saved responses,
-                for i := lowestRequest; i < uint(len(responseOrdering)); i++ {
+                for i := 0; i < len(responseOrdering); i++ {
 
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
@@ -163,12 +163,13 @@ func (m *MultiSourcePatcher) Patch() error {
                     responseOrdering = responseOrdering[:len(responseOrdering) - 1]
 
                     // Loop if the next block is subsequent block. Halt otherwise.
-                    if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (i + 1) {
+                    if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (lowestRequest + uint(i) + 1) {
                         break
                     }
                 }
             }
         }
+        log.Debugf("\n\n")
     }
 
     return nil

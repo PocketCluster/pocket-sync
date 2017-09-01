@@ -2,10 +2,10 @@ package index
 
 import (
     "encoding/binary"
+    "reflect"
     "testing"
 
     "github.com/Redundancy/go-sync/chunks"
-    "reflect"
 )
 
 // Weak checksums must be 8 bytes

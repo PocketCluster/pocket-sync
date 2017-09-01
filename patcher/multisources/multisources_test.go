@@ -1,6 +1,7 @@
 package multisources
 
 import (
+    "encoding/binary"
     "bytes"
     "io"
     "io/ioutil"
@@ -28,7 +29,7 @@ var (
     REFERENCE_HASHES [][]byte
 )
 
-func setup() {
+func init() {
     log.SetLevel(log.DebugLevel)
 
     maxLen := len(REFERENCE_STRING)
@@ -111,7 +112,6 @@ func Test_Available_Pool_Deletion(t *testing.T) {
 }
 
 func Test_SingleSource_Basic_Patching(t *testing.T) {
-    setup()
     var (
         local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
         out   = bytes.NewBuffer(nil)
@@ -122,19 +122,26 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
                 blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
             ),
         }
-        chksums = []chunks.ChunkChecksum{
-            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
-            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
-            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
-            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
-        }
+        chksum = []chunks.ChunkChecksum{}
     )
+    for i := 0; i < len(REFERENCE_BLOCKS); i++ {
+        weakSum := make([]byte, BLOCKSIZE)
+        binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+        chksum = append(
+            chksum,
+            chunks.ChunkChecksum{
+                ChunkOffset:    uint(i),
+                WeakChecksum:   weakSum,
+                StrongChecksum: weakSum,
+            })
+    }
 
     src, err := NewMultiSourcePatcher(
         local,
         out,
         repos,
-        chksums,
+        chksum,
     )
     if err != nil {
         t.Fatal(err)
