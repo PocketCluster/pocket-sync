@@ -1,7 +1,6 @@
 package multisources
 
 import (
-    "encoding/binary"
     "bytes"
     "io"
     "io/ioutil"
@@ -15,6 +14,7 @@ import (
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/rollsum"
 )
 
 const (
@@ -26,6 +26,7 @@ var (
     REFERENCE_BUFFER *bytes.Buffer = nil
     REFERENCE_BLOCKS []string      = nil
     REFERENCE_HASHES [][]byte      = nil
+    REFERENCE_CHKSEQ chunks.SequentialChecksumList = nil
     BLOCK_COUNT      int           = 0
 )
 
@@ -55,18 +56,48 @@ func setup() {
     }
 
     BLOCK_COUNT = len(REFERENCE_BLOCKS)
+    REFERENCE_CHKSEQ = buildSequentialChecksum(REFERENCE_BLOCKS, BLOCKSIZE)
 }
 
 func clean() {
     REFERENCE_BUFFER = nil
     REFERENCE_BLOCKS = nil
     REFERENCE_HASHES = nil
+    REFERENCE_CHKSEQ = nil
     BLOCK_COUNT      = 0
 }
 
 func stringToReadSeeker(input string) io.ReadSeeker {
     return bytes.NewReader([]byte(input))
 }
+
+func buildSequentialChecksum(refBlks []string, blocksize int) chunks.SequentialChecksumList {
+    var (
+        chksum = chunks.SequentialChecksumList{}
+        rsum   = rollsum.NewRollsum64(uint(blocksize))
+        ssum   = ripemd160.New()
+    )
+
+    for i := 0; i < len(refBlks); i++ {
+        var (
+            wsum = make([]byte, blocksize)
+            blk     = []byte(refBlks[i])
+        )
+        rsum.SetBlock(blk)
+        rsum.GetSum(wsum)
+        ssum.Write(blk)
+
+        chksum = append(
+            chksum,
+            chunks.ChunkChecksum{
+                ChunkOffset:    uint(i),
+                WeakChecksum:   wsum,
+                StrongChecksum: ssum.Sum(nil),
+            })
+    }
+    return chksum
+}
+
 
 func Test_Available_Pool_Addition(t *testing.T) {
     var (
@@ -128,7 +159,6 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
     defer clean()
 
     var (
-        local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
             blockrepository.NewReadSeekerBlockRepository(
@@ -137,26 +167,12 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
                 blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
             ),
         }
-        chksum = []chunks.ChunkChecksum{}
     )
-    for i := 0; i < len(REFERENCE_BLOCKS); i++ {
-        weakSum := make([]byte, BLOCKSIZE)
-        binary.LittleEndian.PutUint64(weakSum, uint64(i))
-
-        chksum = append(
-            chksum,
-            chunks.ChunkChecksum{
-                ChunkOffset:    uint(i),
-                WeakChecksum:   weakSum,
-                StrongChecksum: weakSum,
-            })
-    }
 
     src, err := NewMultiSourcePatcher(
-        local,
         out,
         repos,
-        chksum,
+        REFERENCE_CHKSEQ,
     )
     if err != nil {
         t.Fatal(err)
@@ -183,7 +199,6 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     defer clean()
 
     var (
-        local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
             blockrepository.NewReadSeekerBlockRepository(
@@ -207,26 +222,12 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
                 blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
             ),
         }
-        chksum = []chunks.ChunkChecksum{}
     )
-    for i := 0; i < len(REFERENCE_BLOCKS); i++ {
-        weakSum := make([]byte, BLOCKSIZE)
-        binary.LittleEndian.PutUint64(weakSum, uint64(i))
-
-        chksum = append(
-            chksum,
-            chunks.ChunkChecksum{
-                ChunkOffset:    uint(i),
-                WeakChecksum:   weakSum,
-                StrongChecksum: weakSum,
-            })
-    }
 
     src, err := NewMultiSourcePatcher(
-        local,
         out,
         repos,
-        chksum,
+        REFERENCE_CHKSEQ,
     )
     if err != nil {
         t.Fatal(err)
@@ -240,99 +241,6 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
 
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
-        if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
-            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
-        }
-    } else {
-        t.Fatal(err)
-    }
-}
-
-func Test_PatchingEnd(t *testing.T) {
-    setup()
-    defer clean()
-
-    var (
-        local = bytes.NewReader([]byte("The quick brown fox jumped over the l4zy d0g"))
-        out   = bytes.NewBuffer(nil)
-        repos = []patcher.BlockRepository{
-            blockrepository.NewReadSeekerBlockRepository(
-                0,
-                stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-            ),
-        }
-        chksums = []chunks.ChunkChecksum{
-            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
-            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
-            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
-            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
-        }
-
-    )
-
-    src, err := NewMultiSourcePatcher(
-        local,
-        out,
-        repos,
-        chksums,
-    )
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    err = src.Patch()
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    if result, err := ioutil.ReadAll(out); err == nil {
-        if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
-            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
-        }
-    } else {
-        t.Fatal(err)
-    }
-}
-
-func Test_PatchingEntirelyMissing(t *testing.T) {
-    setup()
-    defer clean()
-
-    var (
-        local = bytes.NewReader([]byte(""))
-        out   = bytes.NewBuffer(nil)
-        repos = []patcher.BlockRepository{
-            blockrepository.NewReadSeekerBlockRepository(
-                0,
-                stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
-            ),
-        }
-        chksums = []chunks.ChunkChecksum{
-            {ChunkOffset: 0, WeakChecksum: []byte("a"), StrongChecksum: []byte("a")},
-            {ChunkOffset: 1, WeakChecksum: []byte("b"), StrongChecksum: []byte("b")},
-            {ChunkOffset: 2, WeakChecksum: []byte("c"), StrongChecksum: []byte("c")},
-            {ChunkOffset: 3, WeakChecksum: []byte("d"), StrongChecksum: []byte("d")},
-        }
-    )
-
-    src, err := NewMultiSourcePatcher(
-        local,
-        out,
-        repos,
-        chksums,
-    )
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    err = src.Patch()
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    if result, err := ioutil.ReadAll(out); err == nil {
         if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
             t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
         }

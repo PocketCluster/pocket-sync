@@ -20,15 +20,11 @@ import (
  */
 
 func NewMultiSourcePatcher(
-    localFile        io.ReadSeeker,
     output           io.Writer,
     repositories     []patcher.BlockRepository,
     blockSequence    chunks.SequentialChecksumList,
 ) (*MultiSourcePatcher, error) {
     // error check
-    if localFile == nil {
-        return nil, errors.Errorf("no localfile to seek available blocks")
-    }
     if output == nil {
         return nil, errors.Errorf("no output to save retrieved blocks")
     }
@@ -42,7 +38,6 @@ func NewMultiSourcePatcher(
     }
 
     return &MultiSourcePatcher{
-//        localFile:        localFile,
         output:           output,
         repositories:     rMap,
         blockSequence:    blockSequence,
@@ -55,7 +50,6 @@ func NewMultiSourcePatcher(
 }
 
 type MultiSourcePatcher struct {
-//    localFile         io.ReadSeeker
     output            io.Writer
     repositories      map[uint]patcher.BlockRepository
     blockSequence     chunks.SequentialChecksumList
