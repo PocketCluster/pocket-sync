@@ -23,13 +23,18 @@ const (
 )
 
 var (
-    REFERENCE_BUFFER = bytes.NewBufferString(REFERENCE_STRING)
-    REFERENCE_BLOCKS []string
-    BLOCK_COUNT      int
-    REFERENCE_HASHES [][]byte
+    REFERENCE_BUFFER *bytes.Buffer = nil
+    REFERENCE_BLOCKS []string      = nil
+    REFERENCE_HASHES [][]byte      = nil
+    BLOCK_COUNT      int           = 0
 )
 
-func init() {
+func setup() {
+    REFERENCE_BUFFER = bytes.NewBufferString(REFERENCE_STRING)
+    REFERENCE_BLOCKS = []string{}
+    REFERENCE_HASHES = [][]byte{}
+    BLOCK_COUNT      = 0
+
     log.SetLevel(log.DebugLevel)
 
     maxLen := len(REFERENCE_STRING)
@@ -50,6 +55,13 @@ func init() {
     }
 
     BLOCK_COUNT = len(REFERENCE_BLOCKS)
+}
+
+func clean() {
+    REFERENCE_BUFFER = nil
+    REFERENCE_BLOCKS = nil
+    REFERENCE_HASHES = nil
+    BLOCK_COUNT      = 0
 }
 
 func stringToReadSeeker(input string) io.ReadSeeker {
@@ -112,6 +124,9 @@ func Test_Available_Pool_Deletion(t *testing.T) {
 }
 
 func Test_SingleSource_Basic_Patching(t *testing.T) {
+    setup()
+    defer clean()
+
     var (
         local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
         out   = bytes.NewBuffer(nil)
@@ -163,7 +178,80 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
     }
 }
 
+func Test_MultiSource_Basic_Patching(t *testing.T) {
+    setup()
+    defer clean()
+
+    var (
+        local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+            blockrepository.NewReadSeekerBlockRepository(
+                0,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+            blockrepository.NewReadSeekerBlockRepository(
+                1,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+            blockrepository.NewReadSeekerBlockRepository(
+                2,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+            blockrepository.NewReadSeekerBlockRepository(
+                3,
+                stringToReadSeeker(REFERENCE_STRING),
+                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+            ),
+        }
+        chksum = []chunks.ChunkChecksum{}
+    )
+    for i := 0; i < len(REFERENCE_BLOCKS); i++ {
+        weakSum := make([]byte, BLOCKSIZE)
+        binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+        chksum = append(
+            chksum,
+            chunks.ChunkChecksum{
+                ChunkOffset:    uint(i),
+                WeakChecksum:   weakSum,
+                StrongChecksum: weakSum,
+            })
+    }
+
+    src, err := NewMultiSourcePatcher(
+        local,
+        out,
+        repos,
+        chksum,
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    err = src.Patch()
+    if err != nil {
+        t.Fatal(err)
+    }
+    src.closeRepositories()
+
+    if result, err := ioutil.ReadAll(out); err == nil {
+        t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
+        if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
+            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
+        }
+    } else {
+        t.Fatal(err)
+    }
+}
+
 func Test_PatchingEnd(t *testing.T) {
+    setup()
+    defer clean()
+
     var (
         local = bytes.NewReader([]byte("The quick brown fox jumped over the l4zy d0g"))
         out   = bytes.NewBuffer(nil)
@@ -208,6 +296,9 @@ func Test_PatchingEnd(t *testing.T) {
 }
 
 func Test_PatchingEntirelyMissing(t *testing.T) {
+    setup()
+    defer clean()
+
     var (
         local = bytes.NewReader([]byte(""))
         out   = bytes.NewBuffer(nil)

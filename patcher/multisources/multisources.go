@@ -77,8 +77,10 @@ func (m *MultiSourcePatcher) closeRepositories() error {
 
 func (m *MultiSourcePatcher) Patch() error {
     var (
-        currentBlock   uint = 0
-        endBlock       uint = uint(len(m.blockSequence) - 1)
+        targetBlock    uint = 0
+        finishedBlock  uint = 0
+        endBlock       uint = m.blockSequence[len(m.blockSequence) - 1].ChunkOffset
+
         repositoryPool      = makeRepositoryPoolFromMap(m.repositories)
         poolSize            = len(repositoryPool)
 
@@ -94,17 +96,16 @@ func (m *MultiSourcePatcher) Patch() error {
         go r.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
     }
 
-    log.Debugf("[PATCHER] Patching while currentBlock %v <= endBlock %v", currentBlock, endBlock)
-    // loop until current block reaches to end
-    for currentBlock <= endBlock {
+    log.Debugf("[PATCHER] Patching while targetBlock %v -> endBlock %v", targetBlock, endBlock)
 
+    for {
         poolSize = len(repositoryPool)
         if 0 < poolSize {
-            log.Debugf("[PATCHER] Pool available %d", poolSize)
+            log.Debugf("[PATCHER] Pool available %v", repositoryPool)
 
-            for i := 0; i < poolSize; i++ {
+            for i := 0; i < poolSize && targetBlock <= endBlock; i++ {
                 var (
-                    missing = m.blockSequence[currentBlock]
+                    missing = m.blockSequence[targetBlock]
                     pIndex  = rand.Intn(poolSize - i)
                     poolID  = repositoryPool[pIndex]
                 )
@@ -117,12 +118,12 @@ func (m *MultiSourcePatcher) Patch() error {
                     StartBlock:    missing.ChunkOffset,
                     EndBlock:      missing.ChunkOffset,
                 })
-                log.Debugf("[PATCHER] pool %v | requested pool #%v | currentBlock %v", repositoryPool, pIndex, currentBlock)
+                log.Debugf("[PATCHER] pool %v | requested pool #%v | targetBlock %v\n", repositoryPool, pIndex, targetBlock)
 
                 requestOrdering = append(requestOrdering, missing.ChunkOffset)
 
                 // increment current target block by 1
-                currentBlock += 1
+                targetBlock += 1
             }
 
             sort.Sort(sort.Reverse(requestOrdering))
@@ -130,7 +131,40 @@ func (m *MultiSourcePatcher) Patch() error {
 
         // Once we satuated pool with request, we'd like to see if response can be written into output.
         // in "request" -> "write to disk" sequence could give some some window where network & disk ops going same time.
-        // if 0 < len(requestOrdering) && 0 < len(responseOrdering) {}
+        if 0 < len(requestOrdering) && 0 < len(responseOrdering) {
+            var (
+                responseSize   int  = len(responseOrdering) // this needs to be fixated for the loop below. Don't use it otherwise.
+                lowestRequest  uint = requestOrdering[len(requestOrdering) - 1]
+                lowestResponse uint = responseOrdering[len(responseOrdering) - 1].BlockID
+            )
+
+            if lowestRequest == lowestResponse {
+
+                for i := 0; i < responseSize; i++ {
+                    result := responseOrdering[len(responseOrdering) - 1]
+                    if _, err := m.output.Write(result.Data); err != nil {
+                        log.Errorf("[PATCHER] Could not write data to output: %v", err)
+                    }
+
+                    // save finished block
+                    finishedBlock    = requestOrdering[len(requestOrdering) - 1]
+
+                    // remove the lowest response queue
+                    requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
+                    responseOrdering = responseOrdering[:len(responseOrdering) - 1]
+
+                    // Loop if the next responded block is subsequent block. Halt otherwise.
+                    if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (finishedBlock + 1) {
+                        break
+                    }
+                }
+            }
+
+            // *** PERFECT END CONDITION ***
+            if endBlock == finishedBlock {
+                return nil
+            }
+        }
 
         select {
             // handle error first
@@ -140,44 +174,19 @@ func (m *MultiSourcePatcher) Patch() error {
             }
 
             case result := <- m.repoResponseC: {
-                log.Debugf("[PATCHER] response blk %v [%s]", result.BlockID, string(result.Data))
+                log.Debugf("[PATCHER] response blk from repo #%v (%v)[%s]", result.RepositoryID, result.BlockID, string(result.Data))
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
                 sort.Sort(sort.Reverse(responseOrdering))
 
                 // put back the repo id into available pool
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
-
-                // if there is subsequent saved responses, write it all down in a batch
-                var (
-                    responseSize   = len(responseOrdering) // this needs to be fixated for the loop below. Don't use it otherwise.
-                    lowestRequest  = requestOrdering[len(requestOrdering) - 1]
-                    lowestResponse = responseOrdering[len(responseOrdering) - 1].BlockID
-                )
-                if lowestRequest == lowestResponse {
-
-                    for i := 0; i < responseSize; i++ {
-                        result := responseOrdering[len(responseOrdering) - 1]
-                        if _, err := m.output.Write(result.Data); err != nil {
-                            log.Errorf("[PATCHER] Could not write data to output: %v", err)
-                        }
-
-                        // remove the lowest response queue
-                        requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
-                        responseOrdering = responseOrdering[:len(responseOrdering) - 1]
-
-                        // Loop if the next responded block is subsequent block. Halt otherwise.
-                        if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (lowestRequest + uint(i) + 1) {
-                            break
-                        }
-                    }
-                }
             }
         }
         log.Debugf("\n\n")
     }
 
-    return nil
+    return errors.Errorf("patch() should not end at this point")
 }
 
 func makeRepositoryPoolFromMap(repos map[uint]patcher.BlockRepository) blocksources.UintSlice {
