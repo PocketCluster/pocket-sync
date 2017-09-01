@@ -5,8 +5,9 @@ import (
     "io"
     "io/ioutil"
     "math/rand"
-    "strings"
     "reflect"
+    "strings"
+    "sync"
     "testing"
     "time"
 
@@ -17,7 +18,6 @@ import (
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/rollsum"
-    "sync"
 )
 
 const (
