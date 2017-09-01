@@ -4,9 +4,11 @@ import (
     "bytes"
     "io"
     "io/ioutil"
+    "math/rand"
     "strings"
     "reflect"
     "testing"
+    "time"
 
     log "github.com/Sirupsen/logrus"
     "golang.org/x/crypto/ripemd160"
@@ -15,6 +17,7 @@ import (
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/rollsum"
+    "sync"
 )
 
 const (
@@ -44,7 +47,7 @@ func setup() {
         last := i + BLOCKSIZE
 
         if last >= maxLen {
-            last = maxLen - 1
+            last = maxLen
         }
 
         block := REFERENCE_STRING[i:last]
@@ -253,50 +256,66 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
     defer clean()
 
     var (
+        waiter   sync.WaitGroup
+        countC   = make(chan int)
+        hitCount = []uint{0, 0, 0, 0}
+        slpCount = []time.Duration{0, 0, 0, 0}
+
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
 
             blockrepository.NewBlockRepositoryBase(
                 0,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    t.Logf("FunctionRequester start %d", start)
-
-                    return []byte{0, 0}, nil
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- 0
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeNullFixedSizeResolver(1),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
                 1,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    t.Logf("FunctionRequester start %d", start)
-
-                    return []byte{0, 0}, nil
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- 1
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeNullFixedSizeResolver(1),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
                 2,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    t.Logf("FunctionRequester start %d", start)
-
-                    return []byte{0, 0}, nil
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- 2
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeNullFixedSizeResolver(1),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
                 3,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    t.Logf("FunctionRequester start %d", start)
-
-                    return []byte{0, 0}, nil
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- 3
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeNullFixedSizeResolver(1),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
         }
     )
+    waiter.Add(1)
+    go func(h []uint, s []time.Duration) {
+        defer waiter.Done()
+        for r := range countC {
+            h[r]++
+        }
+    }(hitCount, slpCount)
 
     src, err := NewMultiSourcePatcher(
         out,
@@ -312,11 +331,20 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
         t.Fatal(err)
     }
     src.closeRepositories()
+    close(countC)
+    waiter.Wait()
+
+    for c := range hitCount {
+        t.Logf("Repo #%d hit %v times", c, hitCount[c])
+    }
+
 
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
-        if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
-            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
+        diff := bytes.Compare(result, []byte(REFERENCE_STRING))
+        if diff != 0 {
+            t.Errorf("[%d] Result does not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
+
         }
     } else {
         t.Fatal(err)
