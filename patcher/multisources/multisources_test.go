@@ -36,10 +36,10 @@ func setup() {
     REFERENCE_HASHES = [][]byte{}
     BLOCK_COUNT      = 0
 
-    log.SetLevel(log.DebugLevel)
+    maxLen          := len(REFERENCE_STRING)
+    m               := ripemd160.New()
 
-    maxLen := len(REFERENCE_STRING)
-    m := ripemd160.New()
+    log.SetLevel(log.DebugLevel)
     for i := 0; i < maxLen; i += BLOCKSIZE {
         last := i + BLOCKSIZE
 
