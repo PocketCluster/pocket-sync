@@ -85,25 +85,19 @@ func (m *MultiSourcePatcher) Patch() error {
 
     // launch repository pool
     for _, r := range m.repositories {
-        log.Debugf("[PATCHER] repo %v starting into pool...", r.RepositoryID())
         m.repoWaiter.Add(1)
         go r.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
     }
 
-    log.Debugf("[PATCHER] Patching while targetBlock %v -> endBlock %v", targetBlock, endBlock)
-
     for {
         poolSize = len(repositoryPool)
         if 0 < poolSize {
-            log.Debugf("[PATCHER] Pool available %v", repositoryPool)
-
             for i := 0; i < poolSize && targetBlock <= endBlock; i++ {
                 var (
                     missing = m.blockSequence[targetBlock]
                     pIndex  = rand.Intn(poolSize - i)
                     poolID  = repositoryPool[pIndex]
                 )
-                log.Debugf("[PATCHER] missing blk %v | pool %v | pool index %v | pool id %v", missing.ChunkOffset, repositoryPool, pIndex, poolID)
                 repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
 
                 // We'll request only one block to a repository.
@@ -112,8 +106,8 @@ func (m *MultiSourcePatcher) Patch() error {
                     StartBlock:    missing.ChunkOffset,
                     EndBlock:      missing.ChunkOffset,
                 })
-                log.Debugf("[PATCHER] pool %v | requested pool #%v | targetBlock %v\n", repositoryPool, pIndex, targetBlock)
 
+                // append requested block id
                 requestOrdering = append(requestOrdering, missing.ChunkOffset)
 
                 // increment current target block by 1
@@ -137,7 +131,7 @@ func (m *MultiSourcePatcher) Patch() error {
                 for i := 0; i < responseSize; i++ {
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
-                        log.Errorf("[PATCHER] Could not write data to output: %v", err)
+                        log.Errorf("[PATCHER] could not write data to output: %v", err)
                     }
 
                     // save finished block
@@ -163,12 +157,11 @@ func (m *MultiSourcePatcher) Patch() error {
         select {
             // handle error first
             case err := <- m.repoErrorC: {
-                log.Debugf("[PATCHER] error detected %v", err.Error())
+                log.Errorf("repository reports error %v", err.Error())
                 return errors.Errorf("Failed to read from reference file: %v", err)
             }
 
             case result := <- m.repoResponseC: {
-                log.Debugf("[PATCHER] response blk from repo #%v (%v)[%s]", result.RepositoryID, result.BlockID, string(result.Data))
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
                 sort.Sort(sort.Reverse(responseOrdering))
@@ -177,7 +170,6 @@ func (m *MultiSourcePatcher) Patch() error {
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
             }
         }
-        log.Debugf("\n\n")
     }
 
     return errors.Errorf("patch() should not end at this point")
@@ -228,7 +220,6 @@ func alertPendingResponse(
     request     blocksources.UintSlice,
     response    patcher.StackedReponse,
 ) chan <- patcher.RepositoryResponse {
-    log.Debugf("[PATCHER] See if we're ready to receive alert...")
     if len(request) == 0 || len(response) == 0 {
         return nil
     }
@@ -236,7 +227,6 @@ func alertPendingResponse(
     if request[len(request)-1] != response[len(response)-1].BlockID {
         return nil
     }
-    log.Debugf("[PATCHER] Oh, we are! send response here %v", readyC)
     return readyC
 }
 
@@ -251,6 +241,5 @@ func pullLowestResponse(
     if request[len(request)-1] != response[len(response)-1].BlockID {
         return patcher.RepositoryResponse{}
     }
-    log.Debugf("[PATCHER] returning the lowest response...")
     return response[len(response)-1]
 }
