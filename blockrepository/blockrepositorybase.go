@@ -4,7 +4,6 @@ import (
     "sort"
     "sync"
 
-//    log "github.com/Sirupsen/logrus"
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/blocksources"
@@ -32,12 +31,6 @@ type BlockRepositoryRequester interface {
  *
  * BlockRepositoryBase implements patcher.BlockSource.
  */
-
-type BlockRepositorySourceState int
-const (
-    STATE_RUNNING            BlockRepositorySourceState = iota
-    STATE_EXITING
-)
 
 func NewBlockRepositoryBase(
     repositoryID uint,
@@ -80,7 +73,6 @@ func (b *BlockRepositoryBase) HandleRequest(
     responseC   chan patcher.RepositoryResponse,
 ) {
     var (
-        state               = STATE_RUNNING
         pendingErrors       = &blocksources.ErrorWatcher{
             ErrorChannel: errorC,
         }
@@ -98,8 +90,7 @@ func (b *BlockRepositoryBase) HandleRequest(
         waiter.Done()
     }()
 
-    for state == STATE_RUNNING || pendingErrors.Err() != nil {
-
+    for {
         if len(requestQueue) != 0 {
             // dispatch queued request
             nextRequest := requestQueue[len(requestQueue)-1]
@@ -120,13 +111,14 @@ func (b *BlockRepositoryBase) HandleRequest(
             // remove dispatched request
             requestQueue = requestQueue[:len(requestQueue)-1]
 
+            // set the error
             if result.Err != nil {
                 pendingErrors.SetError(result.Err)
                 pendingResponse.Clear()
-                state = STATE_EXITING
-                break
+                continue
             }
 
+            // verify hash
             if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
                 pendingErrors.SetError(
                     errors.Errorf(
@@ -134,10 +126,10 @@ func (b *BlockRepositoryBase) HandleRequest(
                         result.StartBlockID,
                         result.EndBlockID))
                 pendingResponse.Clear()
-                state = STATE_EXITING
-                break
+                continue
             }
 
+            // enqueue result
             responseOrdering = append(responseOrdering,
                 patcher.RepositoryResponse{
                     RepositoryID: b.repositoryID,
@@ -160,7 +152,6 @@ func (b *BlockRepositoryBase) HandleRequest(
 
         select {
             case <-exitC: {
-                state = STATE_EXITING
                 return
             }
 
