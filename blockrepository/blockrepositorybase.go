@@ -4,6 +4,7 @@ import (
     "sort"
     "sync"
 
+//    log "github.com/Sirupsen/logrus"
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/blocksources"
@@ -99,6 +100,64 @@ func (b *BlockRepositoryBase) HandleRequest(
 
     for state == STATE_RUNNING || pendingErrors.Err() != nil {
 
+        if len(requestQueue) != 0 {
+            // dispatch queued request
+            nextRequest := requestQueue[len(requestQueue)-1]
+            requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
+            sort.Sort(sort.Reverse(requestOrdering))
+
+            startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlockID)
+            endOffset := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlockID)
+
+            response, err := b.Requester.DoRequest(startOffset, endOffset)
+            result := blocksources.AsyncResult{
+                StartBlockID: nextRequest.StartBlockID,
+                EndBlockID:   nextRequest.EndBlockID,
+                Data:         response,
+                Err:          err,
+            }
+
+            // remove dispatched request
+            requestQueue = requestQueue[:len(requestQueue)-1]
+
+            if result.Err != nil {
+                pendingErrors.SetError(result.Err)
+                pendingResponse.Clear()
+                state = STATE_EXITING
+                break
+            }
+
+            if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
+                pendingErrors.SetError(
+                    errors.Errorf(
+                        "The returned block range (%v-%v) did not match the expected checksum for the blocks",
+                        result.StartBlockID,
+                        result.EndBlockID))
+                pendingResponse.Clear()
+                state = STATE_EXITING
+                break
+            }
+
+            responseOrdering = append(responseOrdering,
+                patcher.RepositoryResponse{
+                    RepositoryID: b.repositoryID,
+                    BlockID:      result.StartBlockID,
+                    Data:         result.Data,
+                })
+
+            // sort high to low
+            sort.Sort(sort.Reverse(responseOrdering))
+
+            // if we just got the lowest requested block, we can set the response. Otherwise, wait.
+            lowestRequest := requestOrdering[len(requestOrdering)-1]
+
+            if lowestRequest == result.StartBlockID {
+                lowestResponse := responseOrdering[len(responseOrdering)-1]
+                pendingResponse.Clear()
+                pendingResponse.SetResponse(&lowestResponse)
+            }
+        }
+
         select {
             case <-exitC: {
                 state = STATE_EXITING
@@ -134,67 +193,6 @@ func (b *BlockRepositoryBase) HandleRequest(
                     )...)
 
                 sort.Sort(sort.Reverse(requestQueue))
-            }
-
-            default: {
-                if len(requestQueue) == 0 {
-                    continue
-                }
-
-                // dispatch queued request
-                nextRequest := requestQueue[len(requestQueue)-1]
-                requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
-                sort.Sort(sort.Reverse(requestOrdering))
-
-                startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlockID)
-                endOffset   := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlockID)
-                response, err := b.Requester.DoRequest(startOffset, endOffset)
-                result := blocksources.AsyncResult{
-                    StartBlockID: nextRequest.StartBlockID,
-                    EndBlockID:   nextRequest.EndBlockID,
-                    Data:         response,
-                    Err:          err,
-                }
-
-                // remove dispatched request
-                requestQueue = requestQueue[:len(requestQueue)-1]
-
-                if result.Err != nil {
-                    pendingErrors.SetError(result.Err)
-                    pendingResponse.Clear()
-                    state = STATE_EXITING
-                    break
-                }
-
-                if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
-                    pendingErrors.SetError(
-                        errors.Errorf(
-                            "The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                            result.StartBlockID,
-                            result.EndBlockID))
-                    pendingResponse.Clear()
-                    state = STATE_EXITING
-                    break
-                }
-
-                responseOrdering = append(responseOrdering,
-                    patcher.RepositoryResponse{
-                        RepositoryID:   b.repositoryID,
-                        BlockID:        result.StartBlockID,
-                        Data:           result.Data,
-                    })
-
-                // sort high to low
-                sort.Sort(sort.Reverse(responseOrdering))
-
-                // if we just got the lowest requested block, we can set the response. Otherwise, wait.
-                lowestRequest := requestOrdering[len(requestOrdering)-1]
-
-                if lowestRequest == result.StartBlockID {
-                    lowestResponse := responseOrdering[len(responseOrdering)-1]
-                    pendingResponse.Clear()
-                    pendingResponse.SetResponse(&lowestResponse)
-                }
             }
         }
     }

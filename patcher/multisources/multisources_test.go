@@ -8,6 +8,7 @@ import (
     "reflect"
     "testing"
 
+    log "github.com/Sirupsen/logrus"
     "golang.org/x/crypto/ripemd160"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/blocksources"
@@ -27,7 +28,9 @@ var (
     REFERENCE_HASHES [][]byte
 )
 
-func init() {
+func setup() {
+    log.SetLevel(log.DebugLevel)
+
     maxLen := len(REFERENCE_STRING)
     m := ripemd160.New()
     for i := 0; i < maxLen; i += BLOCKSIZE {
@@ -54,7 +57,6 @@ func stringToReadSeeker(input string) io.ReadSeeker {
 
 func Test_Available_Pool_Addition(t *testing.T) {
     var (
-
         poolMap = map[uint]patcher.BlockRepository{
             0:  &blockrepository.BlockRepositoryBase{},
             1:  &blockrepository.BlockRepositoryBase{},
@@ -108,7 +110,8 @@ func Test_Available_Pool_Deletion(t *testing.T) {
     }
 }
 
-func TestPatchingStart(t *testing.T) {
+func Test_SingleSource_Basic_Patching(t *testing.T) {
+    setup()
     var (
         local = bytes.NewReader([]byte("48 brown fox jumped over the lazy dog"))
         out   = bytes.NewBuffer(nil)
@@ -141,6 +144,7 @@ func TestPatchingStart(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
+    src.closeRepositories()
 
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))

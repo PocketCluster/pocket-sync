@@ -42,12 +42,10 @@ func NewMultiSourcePatcher(
     }
 
     return &MultiSourcePatcher{
-        localFile:        localFile,
+//        localFile:        localFile,
         output:           output,
         repositories:     rMap,
         blockSequence:    blockSequence,
-
-        responseReadyC:   make(chan patcher.RepositoryResponse),
 
         repoWaiter:       &sync.WaitGroup{},
         repoExitC:        make(chan bool),
@@ -57,13 +55,10 @@ func NewMultiSourcePatcher(
 }
 
 type MultiSourcePatcher struct {
-    localFile         io.ReadSeeker
+//    localFile         io.ReadSeeker
     output            io.Writer
     repositories      map[uint]patcher.BlockRepository
     blockSequence     chunks.SequentialChecksumList
-
-    // response alinging
-    responseReadyC    chan patcher.RepositoryResponse
 
     // repository handling
     repoWaiter        *sync.WaitGroup
@@ -75,7 +70,6 @@ type MultiSourcePatcher struct {
 func (m *MultiSourcePatcher) closeRepositories() error {
     close(m.repoExitC)
     m.repoWaiter.Wait()
-    close(m.responseReadyC)
     close(m.repoErrorC)
     close(m.repoResponseC)
     return nil
@@ -94,67 +88,84 @@ func (m *MultiSourcePatcher) Patch() error {
     )
 
     // launch repository pool
-    for _, repo := range m.repositories {
-        go repo.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
+    for _, r := range m.repositories {
+        log.Debugf("[PATCHER] repo %v starting into pool...", r.RepositoryID())
+        m.repoWaiter.Add(1)
+        go r.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
     }
 
+    log.Debugf("[PATCHER] Patching while currentBlock %v <= endBlock %v", currentBlock, endBlock)
     // loop until current block reaches to end
     for currentBlock <= endBlock {
-        select {
 
+        poolSize = len(repositoryPool)
+        if 0 < poolSize {
+            log.Debugf("\n[PATCHER] Pool available %d", poolSize)
+
+            for i := 0; i < poolSize; i++ {
+                var (
+                    missing = m.blockSequence[currentBlock]
+                    pIndex  = rand.Intn(poolSize - i)
+                    poolID  = repositoryPool[pIndex]
+                )
+                log.Debugf("[PATCHER] missing blk %v | pool %v | pool index %v | pool id %v", missing, repositoryPool, pIndex, poolID)
+                repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
+
+                // We'll request only one block to a repository.
+                m.repositories[poolID].RequestBlocks(patcher.MissingBlockSpan{
+                    BlockSize:     missing.Size,
+                    StartBlock:    missing.ChunkOffset,
+                    EndBlock:      missing.ChunkOffset,
+                })
+                log.Debugf("[PATCHER] missing blk %v | pool %v | requested pool #%v | currentBlock %v", missing, repositoryPool, pIndex, currentBlock)
+
+                requestOrdering = append(requestOrdering, missing.ChunkOffset)
+
+                // increment current target block by 1
+                currentBlock += 1
+            }
+
+            sort.Sort(sort.Reverse(requestOrdering))
+        }
+
+        select {
             // handle error first
             case err := <- m.repoErrorC: {
+                log.Debugf("[PATCHER] error detected %v", err.Error())
                 return errors.Errorf("Failed to read from reference file: %v", err)
             }
 
             case result := <- m.repoResponseC: {
+                log.Debugf("[PATCHER] received result %v | payload [%s]", result, string(result.Data))
                 // enqueue result to response queue & sort
                 responseOrdering = append(responseOrdering, result)
                 sort.Sort(sort.Reverse(responseOrdering))
 
                 // put back the repo id into available pool
                 repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
-            }
 
-            case alertPendingResponse(m.responseReadyC, requestOrdering, responseOrdering) <- patcher.RepositoryResponse{}: {
-
-                result := responseOrdering[len(responseOrdering) - 1]
-                if _, err := m.output.Write(result.Data); err != nil {
-                    log.Errorf("Could not write data to output: %v", err)
+                // now see if this is to be written into output
+                lowestRequest := requestOrdering[len(requestOrdering) - 1]
+                if lowestRequest != responseOrdering[len(responseOrdering) - 1].BlockID {
+                    continue
                 }
 
-                // move current block to the next
-                currentBlock = result.BlockID + 1
+                // if there is subsequent saved responses,
+                for i := lowestRequest; i < uint(len(responseOrdering)); i++ {
 
-                // remove the lowest response queue
-                requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
-                responseOrdering = responseOrdering[:len(responseOrdering) - 1]
-            }
-
-            default: {
-                poolSize = len(repositoryPool)
-                if 0 < poolSize {
-
-                    for i := 0; i < poolSize; i++ {
-                        var (
-                            missing = m.blockSequence[currentBlock + uint(i)]
-                            pIndex  = rand.Intn(poolSize - i)
-                            poolID  = repositoryPool[pIndex]
-                        )
-
-                        repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
-
-                        // We'll request only one block to a repository.
-                        m.repositories[poolID].RequestBlocks(patcher.MissingBlockSpan{
-                            BlockSize:     missing.Size,
-                            StartBlock:    missing.ChunkOffset,
-                            EndBlock:      missing.ChunkOffset,
-                        })
-
-                        requestOrdering = append(requestOrdering, missing.ChunkOffset)
+                    result := responseOrdering[len(responseOrdering) - 1]
+                    if _, err := m.output.Write(result.Data); err != nil {
+                        log.Errorf("[PATCHER] Could not write data to output: %v", err)
                     }
 
-                    sort.Sort(sort.Reverse(requestOrdering))
+                    // remove the lowest response queue
+                    requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
+                    responseOrdering = responseOrdering[:len(responseOrdering) - 1]
+
+                    // Loop if the next block is subsequent block. Halt otherwise.
+                    if 0 < len(responseOrdering) && responseOrdering[len(responseOrdering) - 1].BlockID != (i + 1) {
+                        break
+                    }
                 }
             }
         }
@@ -195,19 +206,42 @@ func addIdentityToAvailablePool(rID blocksources.UintSlice, id uint) blocksource
     return rID
 }
 
+// ------ conditional select-case trigger -------
+/*
+ * The idea is to catch the lowest block when condition is met and trigger "case" statement in select like below.
+ * Somehow, this doesn't work. :(
+ *
+ * case alertPendingResponse(readyC, requestOrdering, responseOrdering) <- pullLowestResponse(requestOrdering, responseOrdering):
+ *
+ */
 func alertPendingResponse(
     readyC      chan patcher.RepositoryResponse,
     request     blocksources.UintSlice,
     response    patcher.StackedReponse,
 ) chan <- patcher.RepositoryResponse {
+    log.Debugf("[PATCHER] See if we're ready to receive alert...")
     if len(request) == 0 || len(response) == 0 {
         return nil
     }
-
     // see if the lowest order is the same as the lowest response block
-    if request[len(request)-1] == response[len(response)-1].BlockID {
-        return readyC
+    if request[len(request)-1] != response[len(response)-1].BlockID {
+        return nil
     }
+    log.Debugf("[PATCHER] Oh, we are! send response here %v", readyC)
+    return readyC
+}
 
-    return nil
+func pullLowestResponse(
+    request     blocksources.UintSlice,
+    response    patcher.StackedReponse,
+) patcher.RepositoryResponse {
+    // see if the lowest order is the same as the lowest response block
+    if len(request) == 0 || len(response) == 0 {
+        return patcher.RepositoryResponse{}
+    }
+    if request[len(request)-1] != response[len(response)-1].BlockID {
+        return patcher.RepositoryResponse{}
+    }
+    log.Debugf("[PATCHER] returning the lowest response...")
+    return response[len(response)-1]
 }
