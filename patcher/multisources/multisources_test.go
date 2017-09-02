@@ -349,7 +349,157 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
         diff := bytes.Compare(result, []byte(REFERENCE_STRING))
         if diff != 0 {
             t.Errorf("[%d] Result does not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
+        }
+    } else {
+        t.Fatal(err)
+    }
+}
 
+func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
+    setup()
+    defer clean()
+
+    const lowestStartblk int64 = -2
+    type repoStartBlk struct {
+        rID int
+        sBlk int64
+    }
+
+    var (
+        waiter   sync.WaitGroup
+        hitCount = []int{0, 0, 0, 0}
+        blkCount = []int64{lowestStartblk, lowestStartblk, lowestStartblk, lowestStartblk}
+        countC   = make(chan repoStartBlk)
+        waiterC  = []chan bool {
+            make(chan bool),
+            make(chan bool),
+            make(chan bool),
+            make(chan bool),
+        }
+
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    countC <- repoStartBlk{0, start}
+                    <- waiterC[0]
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                1,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    countC <- repoStartBlk{1, start}
+                    <- waiterC[1]
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                2,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    countC <- repoStartBlk{2, start}
+                    <- waiterC[2]
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                3,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    countC <- repoStartBlk{3, start}
+                    <- waiterC[3]
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+        }
+
+        isAllRepoInquired = func(sblks []int64) bool {
+            for _, s := range sblks {
+                if s == lowestStartblk  {
+                    return false
+                }
+            }
+            return true
+        }
+
+        findHeightStartBlk = func(sblks []int64) (int64, int) {
+            var (
+                highest int64 = lowestStartblk
+                index   int = -1
+            )
+            for i, s := range sblks {
+                if highest < s {
+                    highest = s
+                    index = i
+                }
+            }
+            if highest != lowestStartblk {
+                sblks[index] = lowestStartblk
+            }
+            return highest, index
+        }
+    )
+    waiter.Add(1)
+    // this logic works with an assumption that every repo will gets hit
+    go func(h []int, b []int64, w []chan bool) {
+        defer waiter.Done()
+
+        for r := range countC {
+            h[r.rID]++
+            b[r.rID] = r.sBlk
+
+            if isAllRepoInquired(b) {
+                var (
+                    highest int64 = 0
+                    index int = 0
+                )
+                for highest != lowestStartblk {
+                    highest, index = findHeightStartBlk(b)
+                    if highest != lowestStartblk {
+                        w[index] <- true
+                        time.Sleep(time.Millisecond * 300)
+                        log.Debugf("repo #%d highest blk #%d", index, highest)
+                    }
+                }
+                log.Debugf("all waiting repo flushed!\n")
+            }
+        }
+    }(hitCount, blkCount, waiterC)
+
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        REFERENCE_CHKSEQ,
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    err = src.Patch()
+    if err != nil {
+        t.Fatal(err)
+    }
+    src.closeRepositories()
+    close(countC)
+    waiter.Wait()
+
+    for c := range hitCount {
+        t.Logf("Repo #%d hit %v times ", c, hitCount[c])
+    }
+
+    if result, err := ioutil.ReadAll(out); err == nil {
+        t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
+        diff := bytes.Compare(result, []byte(REFERENCE_STRING))
+        if diff != 0 {
+            t.Errorf("[%d] Result does not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
         }
     } else {
         t.Fatal(err)
