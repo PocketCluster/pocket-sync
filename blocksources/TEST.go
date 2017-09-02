@@ -1,7 +1,10 @@
 package blocksources
 
 //-----------------------------------------------------------------------------
-type ErroringRequester struct{}
+type ErroringRequester struct{
+    requestCount uint
+}
+
 type TestError struct{}
 
 func (e *TestError) Error() string {
@@ -9,11 +12,16 @@ func (e *TestError) Error() string {
 }
 
 func (e *ErroringRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
+    e.requestCount += 1
     return nil, &TestError{}
 }
 
 func (e *ErroringRequester) IsFatal(err error) bool {
     return true
+}
+
+func (e *ErroringRequester) RequestCount() uint {
+    return e.requestCount
 }
 
 //-----------------------------------------------------------------------------

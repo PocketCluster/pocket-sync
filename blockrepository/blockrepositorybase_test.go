@@ -37,8 +37,9 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
 
 func Test_BlockRepositoryBase_Error(t *testing.T) {
     var (
+        r = &blocksources.ErroringRequester{}
         b = NewBlockRepositoryBase(0,
-            &blocksources.ErroringRequester{},
+            r,
             blocksources.MakeNullFixedSizeResolver(4),
             nil)
         waiter      = sync.WaitGroup{}
@@ -68,6 +69,9 @@ func Test_BlockRepositoryBase_Error(t *testing.T) {
             t.Fatal("Timed out waiting for error")
         case err := <-errorC:
             t.Log(err.Error())
+    }
+    if r.RequestCount() != REPOSITORY_RETRY_LIMIT {
+        t.Fatalf("RequestCount should be equal to repository retry limit RequestCount = %v", r.RequestCount())
     }
 }
 
