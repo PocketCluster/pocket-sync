@@ -64,7 +64,7 @@ func Test_BlockRepositoryBase_Error(t *testing.T) {
     })
 
     select {
-        case <-time.After(time.Second):
+        case <-time.After(time.Second * 10):
             t.Fatal("Timed out waiting for error")
         case err := <-errorC:
             t.Log(err.Error())

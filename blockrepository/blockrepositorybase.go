@@ -7,6 +7,11 @@ import (
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/blocksources"
+    "time"
+)
+
+const (
+    REPOSITORY_RETRY_LIMIT uint = 5
 )
 
 /*
@@ -73,6 +78,7 @@ func (b *BlockRepositoryBase) HandleRequest(
     responseC   chan patcher.RepositoryResponse,
 ) {
     var (
+        retryCount     uint = 0
         pendingErrors       = &blocksources.ErrorWatcher{
             ErrorChannel: errorC,
         }
@@ -90,7 +96,8 @@ func (b *BlockRepositoryBase) HandleRequest(
         waiter.Done()
     }()
 
-    for {
+    requestLoop: for {
+
         if len(requestQueue) != 0 {
             // dispatch queued request
             nextRequest := requestQueue[len(requestQueue)-1]
@@ -108,26 +115,45 @@ func (b *BlockRepositoryBase) HandleRequest(
                 Err:          err,
             }
 
-            // remove dispatched request
-            requestQueue = requestQueue[:len(requestQueue)-1]
-
             // set the error
             if result.Err != nil {
+                // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
+                if retryCount < REPOSITORY_RETRY_LIMIT {
+                    retryCount++
+                    time.Sleep(time.Second)
+                    continue requestLoop
+                }
+
+                // retryCount exceed limit. Report the error and continue to the next one
+                requestQueue = requestQueue[:len(requestQueue)-1]
                 pendingErrors.SetError(result.Err)
                 pendingResponse.Clear()
-                continue
+                goto resultReport
             }
 
             // verify hash
             if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
+                // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
+                if retryCount < REPOSITORY_RETRY_LIMIT {
+                    retryCount++
+                    time.Sleep(time.Second)
+                    continue requestLoop
+                }
+
+                // retryCount exceed limit. Report the error and continue to the next one
+                requestQueue = requestQueue[:len(requestQueue)-1]
                 pendingErrors.SetError(
                     errors.Errorf(
                         "The returned block range (%v-%v) did not match the expected checksum for the blocks",
                         result.StartBlockID,
                         result.EndBlockID))
                 pendingResponse.Clear()
-                continue
+                goto resultReport
             }
+
+            // everything works great. remove request from queue and reset retryCount
+            retryCount = 0
+            requestQueue = requestQueue[:len(requestQueue)-1]
 
             // enqueue result
             responseOrdering = append(responseOrdering,
@@ -150,7 +176,7 @@ func (b *BlockRepositoryBase) HandleRequest(
             }
         }
 
-        select {
+        resultReport: select {
             case <-exitC: {
                 return
             }
