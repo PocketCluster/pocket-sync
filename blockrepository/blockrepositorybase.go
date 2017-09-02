@@ -11,7 +11,7 @@ import (
 )
 
 const (
-    REPOSITORY_RETRY_LIMIT uint = 5
+    REPOSITORY_RETRY_LIMIT int = 5
 )
 
 /*
@@ -78,7 +78,7 @@ func (b *BlockRepositoryBase) HandleRequest(
     responseC   chan patcher.RepositoryResponse,
 ) {
     var (
-        retryCount     uint = 0
+        retryCount      int = 0
         pendingErrors       = &blocksources.ErrorWatcher{
             ErrorChannel: errorC,
         }
@@ -123,39 +123,34 @@ func (b *BlockRepositoryBase) HandleRequest(
             // set the error
             if result.Err != nil {
                 // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
-                if retryCount < (REPOSITORY_RETRY_LIMIT - 1) {
+                if retryCount < REPOSITORY_RETRY_LIMIT {
                     time.Sleep(time.Second)
                     continue requestLoop
                 }
 
                 // retryCount exceed limit. Report the error and continue to the next one
-                setupErrorReport(
-                    pendingErrors,
-                    pendingResponse,
-                    requestQueue,
-                    requestOrdering,
-                    result.Err)
+                requestQueue = requestQueue[:len(requestQueue)-1]
+                requestOrdering = requestOrdering[:len(requestOrdering)-1]
+                pendingResponse.Clear()
+                pendingErrors.SetError(result.Err)
                 goto resultReport
             }
 
             // verify hash
             if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
                 // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
-                if retryCount < (REPOSITORY_RETRY_LIMIT - 1) {
+                if retryCount < REPOSITORY_RETRY_LIMIT {
                     time.Sleep(time.Second)
                     continue requestLoop
                 }
 
                 // retryCount exceed limit. Report the error and continue to the next one
-                setupErrorReport(
-                    pendingErrors,
-                    pendingResponse,
-                    requestQueue,
-                    requestOrdering,
-                    errors.Errorf(
-                        "The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                        result.StartBlockID,
-                        result.EndBlockID))
+                requestQueue = requestQueue[:len(requestQueue)-1]
+                requestOrdering = requestOrdering[:len(requestOrdering)-1]
+                pendingResponse.Clear()
+                pendingErrors.SetError(
+                    errors.Errorf("The returned block range (%v-%v) did not match the expected checksum for the blocks",
+                        result.StartBlockID, result.EndBlockID))
                 goto resultReport
             }
 
@@ -221,17 +216,4 @@ func (b *BlockRepositoryBase) HandleRequest(
             }
         }
     }
-}
-
-func setupErrorReport(
-    pendingErrors      *blocksources.ErrorWatcher,
-    pendingResponse    *PendingResponseHelper,
-    requestQueue       blocksources.QueuedRequestList,
-    requestOrdering    blocksources.UintSlice,
-    err                error,
-) {
-    requestQueue = requestQueue[:len(requestQueue)-1]
-    requestOrdering = requestOrdering[:len(requestOrdering)-1]
-    pendingErrors.SetError(err)
-    pendingResponse.Clear()
 }

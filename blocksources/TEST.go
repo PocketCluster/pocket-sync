@@ -2,7 +2,7 @@ package blocksources
 
 //-----------------------------------------------------------------------------
 type ErroringRequester struct{
-    requestCount uint
+    requestCount int
 }
 
 type TestError struct{}
@@ -20,7 +20,7 @@ func (e *ErroringRequester) IsFatal(err error) bool {
     return true
 }
 
-func (e *ErroringRequester) RequestCount() uint {
+func (e *ErroringRequester) RequestCount() int {
     return e.requestCount
 }
 
@@ -33,4 +33,11 @@ func (f FunctionRequester) DoRequest(startOffset int64, endOffset int64) (data [
 
 func (f FunctionRequester) IsFatal(err error) bool {
     return true
+}
+
+//-----------------------------------------------------------------------------
+type FunctionVerifier func(startBlockID uint, data []byte) bool
+
+func (f FunctionVerifier) VerifyBlockRange(startBlockID uint, data []byte) bool {
+    return f(startBlockID, data)
 }

@@ -10,10 +10,14 @@ import (
     "github.com/Redundancy/go-sync/blocksources"
 )
 
+const (
+    block_size uint64 = 8
+)
+
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(0, nil,
-            blocksources.MakeNullFixedSizeResolver(4),
+            blocksources.MakeNullFixedSizeResolver(block_size),
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -35,12 +39,12 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     waiter.Wait()
 }
 
-func Test_BlockRepositoryBase_Error(t *testing.T) {
+func Test_BlockRepository_Basic_Error(t *testing.T) {
     var (
         r = &blocksources.ErroringRequester{}
         b = NewBlockRepositoryBase(0,
             r,
-            blocksources.MakeNullFixedSizeResolver(4),
+            blocksources.MakeNullFixedSizeResolver(block_size),
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -75,6 +79,62 @@ func Test_BlockRepositoryBase_Error(t *testing.T) {
     }
 }
 
+func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
+    var (
+        errorCount = 0
+        errorCountC = make(chan int)
+        b = NewBlockRepositoryBase(0,
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                errorCountC <- 1
+                return nil, &blocksources.TestError{}
+            }),
+            blocksources.MakeNullFixedSizeResolver(block_size),
+            blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
+                errorCountC <- 1
+                return false
+            }))
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.RepositoryResponse)
+    )
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(errorCountC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC)
+    }()
+
+    b.RequestBlocks(patcher.MissingBlockSpan{
+        BlockSize:  4,
+        StartBlock: 1,
+        EndBlock:   1,
+    })
+
+
+    resultCheck: for {
+        select {
+            case <-time.After(time.Second * 10):
+                t.Fatal("Timed out waiting for error")
+                return
+            case err := <-errorC:
+                t.Log(err.Error())
+                break resultCheck
+            case e := <- errorCountC:
+                errorCount += e
+        }
+    }
+
+    if errorCount != REPOSITORY_RETRY_LIMIT {
+        t.Fatalf("RequestCount should be equal to repository retry limit RequestCount = %v", errorCount)
+    }
+}
+
 func Test_BlockRepositoryBase_Request(t *testing.T) {
     var (
         expected = []byte("test")
@@ -82,7 +142,7 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
             blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return expected, nil
             }),
-            blocksources.MakeNullFixedSizeResolver(4),
+            blocksources.MakeNullFixedSizeResolver(block_size),
             nil,
         )
         waiter      = sync.WaitGroup{}
