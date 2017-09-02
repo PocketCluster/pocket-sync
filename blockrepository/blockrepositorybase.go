@@ -97,7 +97,6 @@ func (b *BlockRepositoryBase) HandleRequest(
     }()
 
     requestLoop: for {
-
         if len(requestQueue) != 0 {
             // dispatch queued request
             nextRequest := requestQueue[len(requestQueue)-1]

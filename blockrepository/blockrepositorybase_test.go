@@ -135,6 +135,85 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
     }
 }
 
+func Test_BlockRepository_Retry_Verify_Partial_Error(t *testing.T) {
+    const (
+        partial_error_limit = 4
+    )
+    var (
+        errorCount = 0
+        errorCountC = make(chan int)
+        errorLimitC = make(chan int)
+        b = NewBlockRepositoryBase(0,
+            blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                if partial_error_limit <= <- errorLimitC {
+                    return []byte{0x1A}, nil
+                }
+
+                errorCountC <- 1
+                return nil, &blocksources.TestError{}
+            }),
+            blocksources.MakeNullFixedSizeResolver(block_size),
+            blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
+                if partial_error_limit <= <- errorLimitC {
+                    return true
+                }
+
+                errorCountC <- 1
+                return false
+            }))
+        waiter      = sync.WaitGroup{}
+        exitC       = make(chan bool)
+        errorC      = make(chan error)
+        responseC   = make(chan patcher.RepositoryResponse)
+    )
+    defer func() {
+        close(exitC)
+        waiter.Wait()
+        close(errorC)
+        close(responseC)
+        close(errorCountC)
+        close(errorLimitC)
+    }()
+    waiter.Add(1)
+    go func() {
+        b.HandleRequest(&waiter, exitC, errorC, responseC)
+    }()
+
+    b.RequestBlocks(patcher.MissingBlockSpan{
+        BlockSize:  4,
+        StartBlock: 1,
+        EndBlock:   1,
+    })
+
+    resultCheck: for {
+        select {
+            case <-time.After(time.Second * 10): {
+                t.Fatal("Timed out waiting for error")
+                return
+            }
+            case err := <-errorC: {
+                t.Log(err.Error())
+                break resultCheck
+            }
+            case e := <- errorCountC: {
+                errorCount += e
+            }
+            case errorLimitC <- errorCount: {
+            }
+            case r := <- responseC: {
+                if bytes.Compare(r.Data, []byte{0x1A}) != 0 {
+                    t.Fatalf("unexpected result %v", r.Data)
+                }
+                break resultCheck
+            }
+        }
+    }
+
+    if errorCount != partial_error_limit {
+        t.Fatalf("RequestCount should be equal to partial error limit | RequestCount = %v", errorCount)
+    }
+}
+
 func Test_BlockRepositoryBase_Request(t *testing.T) {
     var (
         expected = []byte("test")
