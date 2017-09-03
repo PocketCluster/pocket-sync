@@ -23,12 +23,14 @@
 package index
 
 import (
+    "bytes"
     "encoding/binary"
     "sort"
 
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/merkle"
+    "github.com/Redundancy/go-sync/patcher"
 )
 
 const (
@@ -172,10 +174,6 @@ func (index *ChecksumIndex) WeakCount() int {
     return index.Count
 }
 
-func (index *ChecksumIndex) RootHashFromChecksumSequence() ([]byte, error) {
-    return merkle.SimpleHashFromHashes(index.checkSumSequence.HashList())
-}
-
 func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) chunks.StrongChecksumList {
     x := binary.LittleEndian.Uint64(weak)
     if index.weakChecksumLookup[x & indexOffsetFilter] != nil {
@@ -202,4 +200,36 @@ func (index *ChecksumIndex) FindStrongChecksum2(chk []byte, weak interface{}) []
     } else {
         return nil
     }
+}
+
+// ------------------------------ SequentialChecksumSupervisor interface -----------------------------------------------
+func (index *ChecksumIndex) EndBlockID() uint {
+    return index.checkSumSequence[len(index.checkSumSequence) - 1].ChunkOffset
+}
+
+func (index *ChecksumIndex) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
+    if uint(len(index.checkSumSequence)) <= blockID {
+        return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
+    }
+    missing := index.checkSumSequence[blockID]
+    return patcher.MissingBlockSpan{
+        BlockSize:     missing.Size,
+        StartBlock:    missing.ChunkOffset,
+        EndBlock:      missing.ChunkOffset,
+    }, nil
+}
+
+func (index *ChecksumIndex) VerifyRootHash(hashes [][]byte) error {
+    hToCheck, err := merkle.SimpleHashFromHashes(hashes)
+    if err != nil {
+        return err
+    }
+    hAsRefer, err := index.checkSumSequence.RootHash()
+    if err != nil {
+        return err
+    }
+    if bytes.Compare(hToCheck, hAsRefer) != 0 {
+        return errors.Errorf("[ERR] calculated root hash different from referenece")
+    }
+    return nil
 }

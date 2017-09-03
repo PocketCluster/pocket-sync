@@ -72,21 +72,6 @@ func (w *PendingResponseHelper) SendIfPending() chan<- patcher.BlockReponse {
 }
 
 //-----------------------------------------------------------------------------
-type UintSlice []uint
-
-func (r UintSlice) Len() int {
-    return len(r)
-}
-
-func (r UintSlice) Swap(i, j int) {
-    r[i], r[j] = r[j], r[i]
-}
-
-func (r UintSlice) Less(i, j int) bool {
-    return r[i] < r[j]
-}
-
-//-----------------------------------------------------------------------------
 type AsyncResult struct {
     StartBlockID uint
     EndBlockID   uint

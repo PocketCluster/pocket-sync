@@ -8,9 +8,8 @@ import (
 
     log "github.com/Sirupsen/logrus"
     "github.com/pkg/errors"
-    "github.com/Redundancy/go-sync/blocksources"
-    "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/util/uslice"
 )
 
 /*
@@ -20,9 +19,9 @@ import (
  */
 
 func NewMultiSourcePatcher(
-    output           io.Writer,
-    repositories     []patcher.BlockRepository,
-    blockSequence    chunks.SequentialChecksumList,
+    output       io.Writer,
+    repositories []patcher.BlockRepository,
+    blockRef     patcher.SeqChecksumReference,
 ) (*MultiSourcePatcher, error) {
     // error check
     if output == nil {
@@ -38,27 +37,27 @@ func NewMultiSourcePatcher(
     }
 
     return &MultiSourcePatcher{
-        output:           output,
-        repositories:     rMap,
-        blockSequence:    blockSequence,
+        output:        output,
+        repositories:  rMap,
+        blockRef:      blockRef,
 
-        repoWaiter:       &sync.WaitGroup{},
-        repoExitC:        make(chan bool),
-        repoErrorC:       make(chan *patcher.RepositoryError),
-        repoResponseC:    make(chan patcher.RepositoryResponse),
+        repoWaiter:    &sync.WaitGroup{},
+        repoExitC:     make(chan bool),
+        repoErrorC:    make(chan *patcher.RepositoryError),
+        repoResponseC: make(chan patcher.RepositoryResponse),
     }, nil
 }
 
 type MultiSourcePatcher struct {
-    output            io.Writer
-    repositories      map[uint]patcher.BlockRepository
-    blockSequence     chunks.SequentialChecksumList
+    output           io.Writer
+    repositories     map[uint]patcher.BlockRepository
+    blockRef         patcher.SeqChecksumReference
 
     // repository handling
-    repoWaiter        *sync.WaitGroup
-    repoExitC         chan bool
-    repoErrorC        chan *patcher.RepositoryError
-    repoResponseC     chan patcher.RepositoryResponse
+    repoWaiter       *sync.WaitGroup
+    repoExitC        chan bool
+    repoErrorC       chan *patcher.RepositoryError
+    repoResponseC    chan patcher.RepositoryResponse
 }
 
 func (m *MultiSourcePatcher) closeRepositories() error {
@@ -73,13 +72,13 @@ func (m *MultiSourcePatcher) Patch() error {
     var (
         targetBlock    uint = 0
         finishedBlock  uint = 0
-        endBlock       uint = m.blockSequence[len(m.blockSequence) - 1].ChunkOffset
+        endBlock       uint = m.blockRef.EndBlockID()
 
         repositoryPool      = makeRepositoryPoolFromMap(m.repositories)
         poolSize            = len(repositoryPool)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(blocksources.UintSlice,    0, poolSize)
+        requestOrdering     = make(uslice.UintSlice,          0, poolSize)
         responseOrdering    = make(patcher.StackedReponse,    0, poolSize)
         retryRequests       = make(patcher.QueuedRequestList, 0, poolSize)
     )
@@ -106,7 +105,7 @@ func (m *MultiSourcePatcher) Patch() error {
                     poolID  = repositoryPool[pIndex]
                 )
                 // reduce repo pool
-                repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
+                repositoryPool = uslice.DelElementFromSlice(repositoryPool, poolID)
                 // reduce retry quest
                 retryRequests = retryRequests[:len(retryRequests) - 1]
                 // retry failed target
@@ -119,21 +118,22 @@ func (m *MultiSourcePatcher) Patch() error {
         if 0 < poolSize {
             for i := 0; i < poolSize && targetBlock <= endBlock; i++ {
                 var (
-                    missing = m.blockSequence[targetBlock]
                     pIndex  = rand.Intn(poolSize - i)
                     poolID  = repositoryPool[pIndex]
                 )
-                repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
+                repositoryPool = uslice.DelElementFromSlice(repositoryPool, poolID)
+
+                // this is a critical error
+                missing, err := m.blockRef.MissingBlockSpanForID(targetBlock)
+                if err != nil {
+                    return errors.WithStack(err)
+                }
 
                 // We'll request only one block to a repository.
-                m.repositories[poolID].RequestBlocks(patcher.MissingBlockSpan{
-                    BlockSize:     missing.Size,
-                    StartBlock:    missing.ChunkOffset,
-                    EndBlock:      missing.ChunkOffset,
-                })
+                m.repositories[poolID].RequestBlocks(missing)
 
                 // append requested block id
-                requestOrdering = append(requestOrdering, missing.ChunkOffset)
+                requestOrdering = append(requestOrdering, missing.StartBlock)
 
                 // increment current target block by 1
                 targetBlock += 1
@@ -198,7 +198,7 @@ func (m *MultiSourcePatcher) Patch() error {
                 sort.Sort(sort.Reverse(responseOrdering))
 
                 // put back the repo id into available pool
-                repositoryPool = addIdentityToAvailablePool(repositoryPool, result.RepositoryID)
+                repositoryPool = uslice.AddElementToSlice(repositoryPool, result.RepositoryID)
             }
         }
     }
@@ -206,34 +206,11 @@ func (m *MultiSourcePatcher) Patch() error {
     return errors.Errorf("patch() should not end at this point")
 }
 
-func makeRepositoryPoolFromMap(repos map[uint]patcher.BlockRepository) blocksources.UintSlice {
-    var rID = blocksources.UintSlice{}
+func makeRepositoryPoolFromMap(repos map[uint]patcher.BlockRepository) uslice.UintSlice {
+    var rID = uslice.UintSlice{}
     for id, _ := range repos {
         rID = append(rID, id)
     }
-    sort.Sort(rID)
-    return rID
-}
-
-func delIdentityFromAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
-    var newID = rID[:0]
-    for _, r := range rID {
-        if r != id {
-            newID = append(newID, r)
-        }
-    }
-    sort.Sort(newID)
-    return newID
-}
-
-func addIdentityToAvailablePool(rID blocksources.UintSlice, id uint) blocksources.UintSlice {
-    for _, r := range rID {
-        if r == id {
-            sort.Sort(rID)
-            return rID
-        }
-    }
-    rID = append(rID, id)
     sort.Sort(rID)
     return rID
 }

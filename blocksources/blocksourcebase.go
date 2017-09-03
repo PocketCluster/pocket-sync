@@ -6,6 +6,7 @@ import (
     "sort"
 
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/util/uslice"
 )
 
 /*
@@ -153,7 +154,7 @@ func (s *BlockSourceBase) loop() {
         requestQueue        = make(QueuedRequestList, 0, s.ConcurrentRequests * 2)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(UintSlice,         0, s.ConcurrentRequests)
+        requestOrdering     = make(uslice.UintSlice,  0, s.ConcurrentRequests)
         responseOrdering    = make(PendingResponses,  0, s.ConcurrentRequests)
     )
 

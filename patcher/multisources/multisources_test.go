@@ -12,12 +12,14 @@ import (
     "time"
 
     log "github.com/Sirupsen/logrus"
+    "github.com/pkg/errors"
     "golang.org/x/crypto/ripemd160"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/merkle"
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/util/uslice"
 )
 
 const (
@@ -62,7 +64,7 @@ func setup() {
 
     BLOCK_COUNT = len(REFERENCE_BLOCKS)
     REFERENCE_CHKSEQ = chunks.BuildSequentialChecksum(REFERENCE_BLOCKS, BLOCKSIZE)
-    REFERENCE_RTHASH, err := merkle.SimpleHashFromHashes(REFERENCE_CHKSEQ.HashList())
+    REFERENCE_RTHASH, err := REFERENCE_CHKSEQ.RootHash()
     if err != nil {
         log.Panic(err.Error())
     } else {
@@ -83,6 +85,36 @@ func stringToReadSeeker(input string) io.ReadSeeker {
     return bytes.NewReader([]byte(input))
 }
 
+type testBlkRef struct{}
+func(t *testBlkRef) EndBlockID() uint {
+    return REFERENCE_CHKSEQ[len(REFERENCE_CHKSEQ) - 1].ChunkOffset
+}
+
+func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
+    if uint(len(REFERENCE_CHKSEQ)) <= blockID {
+        return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
+    }
+    missing := REFERENCE_CHKSEQ[blockID]
+    return patcher.MissingBlockSpan{
+        BlockSize:     missing.Size,
+        StartBlock:    missing.ChunkOffset,
+        EndBlock:      missing.ChunkOffset,
+    }, nil
+
+}
+
+func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
+    hToCheck, err := merkle.SimpleHashFromHashes(hashes)
+    if err != nil {
+        return err
+    }
+    if bytes.Compare(hToCheck, REFERENCE_RTHASH) != 0 {
+        return errors.Errorf("[ERR] calculated root hash different from referenece")
+    }
+    return nil
+
+}
+
 func Test_Available_Pool_Addition(t *testing.T) {
     var (
         poolMap = map[uint]patcher.BlockRepository{
@@ -94,47 +126,11 @@ func Test_Available_Pool_Addition(t *testing.T) {
             42: &blockrepository.BlockRepositoryBase{},
             92: &blockrepository.BlockRepositoryBase{},
         }
-        ids blocksources.UintSlice = makeRepositoryPoolFromMap(poolMap)
+        ids uslice.UintSlice = makeRepositoryPoolFromMap(poolMap)
     )
 
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
         t.Errorf("findAllAvailableRepoID should find all ids")
-    }
-
-    ids = addIdentityToAvailablePool(ids, 4)
-    if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
-        t.Errorf("addIdentityToAvailablePool should not add duplicated id")
-    }
-
-    ids = addIdentityToAvailablePool(ids, 77)
-    if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 77, 92}) {
-        t.Errorf("addIdentityToAvailablePool should add new id")
-    }
-}
-
-func Test_Available_Pool_Deletion(t *testing.T) {
-    var (
-        ids blocksources.UintSlice = []uint{0, 1, 4, 7, 13, 42, 92}
-    )
-
-    ids = delIdentityFromAvailablePool(ids, 11)
-    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
-        t.Errorf("delIdentityFromAvailablePool should not delete absent element %v", ids)
-    }
-
-    ids = delIdentityFromAvailablePool(ids, 4)
-    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42, 92}) {
-        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
-    }
-
-    ids = delIdentityFromAvailablePool(ids, 7)
-    if reflect.DeepEqual(ids, []uint{0, 1, 13, 42, 92}) {
-        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
-    }
-
-    ids = delIdentityFromAvailablePool(ids, 92)
-    if reflect.DeepEqual(ids, []uint{0, 1, 7, 13, 42}) {
-        t.Errorf("delIdentityFromAvailablePool only delete one id %v", ids)
     }
 }
 
@@ -156,7 +152,7 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)
@@ -211,7 +207,7 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)
@@ -308,7 +304,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)
@@ -459,7 +455,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)
@@ -566,7 +562,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)
@@ -686,7 +682,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
     src, err := NewMultiSourcePatcher(
         out,
         repos,
-        REFERENCE_CHKSEQ,
+        &testBlkRef{},
     )
     if err != nil {
         t.Fatal(err)

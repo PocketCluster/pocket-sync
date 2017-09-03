@@ -8,6 +8,7 @@ import (
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/blocksources"
+    "github.com/Redundancy/go-sync/util/uslice"
 )
 
 const (
@@ -99,7 +100,7 @@ func (b *BlockRepositoryBase) HandleRequest(
         }
         requestQueue        = make(patcher.QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(blocksources.UintSlice,    0, 1)
+        requestOrdering     = make(uslice.UintSlice,    0, 1)
         responseOrdering    = make(PendingResponses,          0, 1)
     )
 

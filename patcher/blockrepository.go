@@ -32,6 +32,13 @@ type BlockRepository interface {
     )
 }
 
+type SeqChecksumReference interface {
+    EndBlockID() uint
+    MissingBlockSpanForID(blockID uint) (MissingBlockSpan, error)
+    VerifyRootHash(hashes [][]byte) error
+}
+
+//-----------------------------------------------------------------------------
 type RepositoryResponse struct {
     RepositoryID    uint
     BlockID         uint

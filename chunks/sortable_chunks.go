@@ -3,6 +3,9 @@ package chunks
 import (
     "bytes"
     "sort"
+
+    "github.com/pkg/errors"
+    "github.com/Redundancy/go-sync/merkle"
 )
 
 // --------------------------------------------- StrongChecksumList ----------------------------------------------------
@@ -84,12 +87,15 @@ func (s SequentialChecksumList) Less(i, j int) bool {
     return s[i].ChunkOffset < s[j].ChunkOffset
 }
 
-func (s SequentialChecksumList) HashList() [][]byte {
+func (s SequentialChecksumList) RootHash() ([]byte, error) {
     var (
         hashes [][]byte = make([][]byte, 0, len(s))
     )
     for i := 0; i < len(s); i++ {
         hashes = append(hashes, s[i].StrongChecksum)
     }
-    return hashes
+    if len(hashes) != len(s) {
+        return nil, errors.Errorf("[ERR] invalid number of hashes to build root hash")
+    }
+    return merkle.SimpleHashFromHashes(hashes)
 }
