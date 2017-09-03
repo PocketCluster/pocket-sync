@@ -42,8 +42,8 @@ type BlockRepositoryOffsetResolver interface {
 
 // Checks blocks against their expected checksum
 type BlockChecksumVerifier interface {
-    // return results in order of weak checksum, strong checksum, error
-    BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, []byte, error)
+    // return results in order of strong checksum & error
+    BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, error)
 }
 
 /*
@@ -98,7 +98,6 @@ func (b *BlockRepositoryBase) HandleRequest(
 ) {
     var (
         retryCount   int    = 0
-        wChksum      []byte = nil
         sChksum      []byte = nil
         pendingErrors       = &ErrorWatcher{
             ErrorChannel: errorC,
@@ -161,10 +160,9 @@ func (b *BlockRepositoryBase) HandleRequest(
 
             // verify hash
             if b.Verifier != nil {
-                wc, sc, herr := b.Verifier.BlockChecksumForRange(result.StartBlockID, result.Data)
+                chksum, herr := b.Verifier.BlockChecksumForRange(result.StartBlockID, result.Data)
                 if herr != nil {
                     // clear checksum vars for reuse
-                    wChksum = nil
                     sChksum = nil
 
                     // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
@@ -185,11 +183,9 @@ func (b *BlockRepositoryBase) HandleRequest(
                     goto resultReport
                 } else {
                     // when there is no error, take the checksums
-                    wChksum = wc
-                    sChksum = sc
+                    sChksum = chksum
                 }
             } else {
-                wChksum = nil
                 sChksum = nil
             }
 
@@ -203,14 +199,12 @@ func (b *BlockRepositoryBase) HandleRequest(
                     RepositoryID:   b.repositoryID,
                     BlockID:        result.StartBlockID,
                     Data:           result.Data,
-                    WeakChecksum:   wChksum,
                     StrongChecksum: sChksum,
                 })
             // sort high to low
             sort.Sort(sort.Reverse(responseOrdering))
 
             // clear checksum vars for reuse
-            wChksum = nil
             sChksum = nil
 
             // if we just got the lowest requested block, we can set the response. Otherwise, wait.

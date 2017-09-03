@@ -94,9 +94,9 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
                 return nil, &blocksources.TestError{}
             }),
             MakeNullUniformSizeResolver(block_size),
-            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, []byte, error) {
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error) {
                 errorCountC <- 1
-                return nil, nil, errors.Errorf("test")
+                return nil, errors.Errorf("test")
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -161,13 +161,13 @@ func Test_BlockRepository_Retry_Verify_Partial_Error(t *testing.T) {
                 return nil, &blocksources.TestError{}
             }),
             MakeNullUniformSizeResolver(block_size),
-            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, []byte, error) {
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error) {
                 if partial_error_limit <= <- errorLimitC {
-                    return []byte{0x1B}, []byte{0x1C}, nil
+                    return []byte{0x1B}, nil
                 }
 
                 errorCountC <- 1
-                return nil, nil, errors.Errorf("test")
+                return nil, errors.Errorf("test")
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)

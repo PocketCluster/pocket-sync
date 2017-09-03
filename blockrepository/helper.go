@@ -101,8 +101,8 @@ func MakeKnownFileSizedBlockResolver(blockSize int64, filesize int64) *UniformSi
 }
 
 //-----------------------------------------------------------------------------
-type FunctionChecksumVerifier func(startBlockID uint, data []byte) ([]byte, []byte, error)
+type FunctionChecksumVerifier func(startBlockID uint, data []byte) ([]byte, error)
 
-func (f FunctionChecksumVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, []byte, error) {
+func (f FunctionChecksumVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, error) {
     return f(startBlockID, data)
 }
