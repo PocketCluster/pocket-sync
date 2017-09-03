@@ -189,7 +189,7 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
         if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
-            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
+            t.Errorf("result is not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
         }
     } else {
         t.Fatal(err)
@@ -244,7 +244,7 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
         if bytes.Compare(result, []byte(REFERENCE_STRING)) != 0 {
-            t.Errorf("Result does not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
+            t.Errorf("result is not equal reference: \"%s\" vs \"%v\"", result, REFERENCE_STRING)
         }
     } else {
         t.Fatal(err)
@@ -348,7 +348,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
         diff := bytes.Compare(result, []byte(REFERENCE_STRING))
         if diff != 0 {
-            t.Errorf("[%d] Result does not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
+            t.Errorf("[%d] result is not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
         }
     } else {
         t.Fatal(err)
@@ -499,7 +499,114 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
         diff := bytes.Compare(result, []byte(REFERENCE_STRING))
         if diff != 0 {
-            t.Errorf("[%d] Result does not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
+            t.Errorf("[%d] result is not equal reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
+        }
+    } else {
+        t.Fatal(err)
+    }
+}
+
+func Test_Single_Repository_Failure(t *testing.T) {
+    setup()
+    defer clean()
+
+    type repoDelay struct {
+        rID int
+        sleep time.Duration
+    }
+
+    var (
+        waiter   sync.WaitGroup
+        countC   = make(chan repoDelay)
+        hitCount = []int{0, 0, 0, 0}
+        slpCount = []time.Duration{0, 0, 0, 0}
+
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- repoDelay{0,sl}
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                1,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    if start < 40 {
+                        sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                        countC <- repoDelay{1,sl}
+                        time.Sleep(sl)
+                        return []byte(REFERENCE_STRING)[start:end], nil
+                    }
+                    return nil, &blocksources.TestError{}
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                2,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- repoDelay{2,sl}
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+
+            blockrepository.NewBlockRepositoryBase(
+                3,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
+                    countC <- repoDelay{3,sl}
+                    time.Sleep(sl)
+                    return []byte(REFERENCE_STRING)[start:end], nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                nil),
+        }
+    )
+    waiter.Add(1)
+    go func(h []int, s []time.Duration) {
+        defer waiter.Done()
+        for r := range countC {
+            h[r.rID]++
+            s[r.rID] += r.sleep
+        }
+    }(hitCount, slpCount)
+
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        REFERENCE_CHKSEQ,
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    err = src.Patch()
+    if err != nil {
+        t.Fatal(err)
+    }
+    src.closeRepositories()
+    close(countC)
+    waiter.Wait()
+
+    for c := range hitCount {
+        t.Logf("Repo #%d hit %v times | sleep %v", c, hitCount[c], slpCount[c]/time.Duration(hitCount[c]))
+    }
+
+    if result, err := ioutil.ReadAll(out); err == nil {
+        t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
+        diff := bytes.Compare(result, []byte(REFERENCE_STRING))
+        if diff != 0 {
+            t.Errorf("[%d] result is not equal to reference: \"%s\" vs \"%v\"", diff, result, REFERENCE_STRING)
         }
     } else {
         t.Fatal(err)

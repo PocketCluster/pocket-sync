@@ -181,7 +181,6 @@ func (m *MultiSourcePatcher) Patch() error {
                 log.Errorf("repository #%v reports error %v", err.RepositoryID(), err.Error())
                 retryRequests = append(retryRequests, err.MissingBlock())
                 sort.Sort(sort.Reverse(retryRequests))
-                return errors.Errorf("Failed to read from reference file: %v", err)
             }
 
             case result := <- m.repoResponseC: {
