@@ -24,7 +24,7 @@ func TestReadFirstBlock(t *testing.T) {
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {

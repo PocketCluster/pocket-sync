@@ -27,7 +27,7 @@ type BlockRepository interface {
     HandleRequest(
         waiter      *sync.WaitGroup,
         exitC       chan bool,
-        errorC      chan error,
+        errorC      chan *RepositoryError,
         responseC   chan RepositoryResponse,
     )
 }

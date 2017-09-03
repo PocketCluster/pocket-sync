@@ -74,12 +74,12 @@ func (b *BlockRepositoryBase) RequestBlocks(block patcher.MissingBlockSpan) erro
 func (b *BlockRepositoryBase) HandleRequest(
     waiter      *sync.WaitGroup,
     exitC       chan bool,
-    errorC      chan error,
+    errorC      chan *patcher.RepositoryError,
     responseC   chan patcher.RepositoryResponse,
 ) {
     var (
         retryCount      int = 0
-        pendingErrors       = &blocksources.ErrorWatcher{
+        pendingErrors       = &ErrorWatcher{
             ErrorChannel: errorC,
         }
         pendingResponse     = &PendingResponseHelper{
@@ -131,7 +131,11 @@ func (b *BlockRepositoryBase) HandleRequest(
                 requestQueue = requestQueue[:len(requestQueue)-1]
                 requestOrdering = requestOrdering[:len(requestOrdering)-1]
                 pendingResponse.Clear()
-                pendingErrors.SetError(result.Err)
+                pendingErrors.SetError(patcher.NewRepositoryError(
+                    b.repositoryID,
+                    nextRequest.StartBlockID,
+                    nextRequest.EndBlockID,
+                    result.Err))
                 goto resultReport
             }
 
@@ -147,9 +151,12 @@ func (b *BlockRepositoryBase) HandleRequest(
                 requestQueue = requestQueue[:len(requestQueue)-1]
                 requestOrdering = requestOrdering[:len(requestOrdering)-1]
                 pendingResponse.Clear()
-                pendingErrors.SetError(
+                pendingErrors.SetError(patcher.NewRepositoryError(
+                    b.repositoryID,
+                    nextRequest.StartBlockID,
+                    nextRequest.EndBlockID,
                     errors.Errorf("The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                        result.StartBlockID, result.EndBlockID))
+                        result.StartBlockID, result.EndBlockID)))
                 goto resultReport
             }
 

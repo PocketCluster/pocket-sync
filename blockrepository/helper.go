@@ -6,6 +6,40 @@ import (
     "github.com/Redundancy/go-sync/patcher"
 )
 
+/*
+ * ErrorWatcher is a small helper object.
+ * SendIfSet will only return a channel if there is an error set, so w.SendIfSet() <- w.Error() is always safe in a select
+ * statement even if there is no error set
+ */
+type ErrorWatcher struct {
+    ErrorChannel chan *patcher.RepositoryError
+    LastError    *patcher.RepositoryError
+}
+
+func (w *ErrorWatcher) SetError(e *patcher.RepositoryError) {
+    if w.LastError != nil {
+        log.Errorf(errors.Errorf("cannot set a new error when one is already set!").Error())
+    }
+    w.LastError = e
+}
+
+func (w *ErrorWatcher) Clear() {
+    w.LastError = nil
+}
+
+func (w *ErrorWatcher) Err() *patcher.RepositoryError {
+    return w.LastError
+}
+
+func (w *ErrorWatcher) SendIfSet() chan<- *patcher.RepositoryError {
+    if w.LastError != nil {
+        return w.ErrorChannel
+    } else {
+        return nil
+    }
+}
+
+//-----------------------------------------------------------------------------
 type PendingResponseHelper struct {
     ResponseChannel chan patcher.RepositoryResponse
     PendingResponse *patcher.RepositoryResponse

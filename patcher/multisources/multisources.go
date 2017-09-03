@@ -44,7 +44,7 @@ func NewMultiSourcePatcher(
 
         repoWaiter:       &sync.WaitGroup{},
         repoExitC:        make(chan bool),
-        repoErrorC:       make(chan error),
+        repoErrorC:       make(chan *patcher.RepositoryError),
         repoResponseC:    make(chan patcher.RepositoryResponse),
     }, nil
 }
@@ -57,7 +57,7 @@ type MultiSourcePatcher struct {
     // repository handling
     repoWaiter        *sync.WaitGroup
     repoExitC         chan bool
-    repoErrorC        chan error
+    repoErrorC        chan *patcher.RepositoryError
     repoResponseC     chan patcher.RepositoryResponse
 }
 

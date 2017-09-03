@@ -21,7 +21,7 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
         requestC    = make(chan patcher.MissingBlockSpan)
     )
@@ -48,7 +48,7 @@ func Test_BlockRepository_Basic_Error(t *testing.T) {
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -95,7 +95,7 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -163,7 +163,7 @@ func Test_BlockRepository_Retry_Verify_Partial_Error(t *testing.T) {
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -226,7 +226,7 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -269,7 +269,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -326,7 +326,7 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
-        errorC      = make(chan error)
+        errorC      = make(chan *patcher.RepositoryError)
         responseC   = make(chan patcher.RepositoryResponse)
     )
     defer func() {
@@ -391,7 +391,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
 
         waiter       = sync.WaitGroup{}
         exitC        = make(chan bool)
-        errorC       = make(chan error)
+        errorC       = make(chan *patcher.RepositoryError)
         responseC    = make(chan patcher.RepositoryResponse)
     )
     defer func() {
