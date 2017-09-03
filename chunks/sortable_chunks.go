@@ -83,3 +83,13 @@ func (s SequentialChecksumList) Swap(i, j int) {
 func (s SequentialChecksumList) Less(i, j int) bool {
     return s[i].ChunkOffset < s[j].ChunkOffset
 }
+
+func (s SequentialChecksumList) HashList() [][]byte {
+    var (
+        hashes [][]byte = make([][]byte, 0, len(s))
+    )
+    for i := 0; i < len(s); i++ {
+        hashes = append(hashes, s[i].StrongChecksum)
+    }
+    return hashes
+}

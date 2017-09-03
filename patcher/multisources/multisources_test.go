@@ -16,8 +16,8 @@ import (
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/blockrepository"
+    "github.com/Redundancy/go-sync/merkle"
     "github.com/Redundancy/go-sync/patcher"
-    "github.com/Redundancy/go-sync/rollsum"
 )
 
 const (
@@ -29,8 +29,10 @@ var (
     REFERENCE_BUFFER *bytes.Buffer = nil
     REFERENCE_BLOCKS []string      = nil
     REFERENCE_HASHES [][]byte      = nil
+    REFERENCE_RTHASH []byte        = nil
     REFERENCE_CHKSEQ chunks.SequentialChecksumList = nil
     BLOCK_COUNT      int           = 0
+
 )
 
 func setup() {
@@ -59,46 +61,26 @@ func setup() {
     }
 
     BLOCK_COUNT = len(REFERENCE_BLOCKS)
-    REFERENCE_CHKSEQ = buildSequentialChecksum(REFERENCE_BLOCKS, BLOCKSIZE)
+    REFERENCE_CHKSEQ = chunks.BuildSequentialChecksum(REFERENCE_BLOCKS, BLOCKSIZE)
+    REFERENCE_RTHASH, err := merkle.SimpleHashFromHashes(REFERENCE_CHKSEQ.HashList())
+    if err != nil {
+        log.Panic(err.Error())
+    } else {
+        log.Debugf("Root Merkle Hash %v", REFERENCE_RTHASH)
+    }
 }
 
 func clean() {
     REFERENCE_BUFFER = nil
     REFERENCE_BLOCKS = nil
     REFERENCE_HASHES = nil
+    REFERENCE_RTHASH = nil
     REFERENCE_CHKSEQ = nil
     BLOCK_COUNT      = 0
 }
 
 func stringToReadSeeker(input string) io.ReadSeeker {
     return bytes.NewReader([]byte(input))
-}
-
-func buildSequentialChecksum(refBlks []string, blocksize int) chunks.SequentialChecksumList {
-    var (
-        chksum = chunks.SequentialChecksumList{}
-        rsum   = rollsum.NewRollsum64(uint(blocksize))
-        ssum   = ripemd160.New()
-    )
-
-    for i := 0; i < len(refBlks); i++ {
-        var (
-            wsum = make([]byte, blocksize)
-            blk     = []byte(refBlks[i])
-        )
-        rsum.SetBlock(blk)
-        rsum.GetSum(wsum)
-        ssum.Write(blk)
-
-        chksum = append(
-            chksum,
-            chunks.ChunkChecksum{
-                ChunkOffset:    uint(i),
-                WeakChecksum:   wsum,
-                StrongChecksum: ssum.Sum(nil),
-            })
-    }
-    return chksum
 }
 
 func Test_Available_Pool_Addition(t *testing.T) {

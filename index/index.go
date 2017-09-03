@@ -28,6 +28,7 @@ import (
 
     "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/chunks"
+    "github.com/Redundancy/go-sync/merkle"
 )
 
 const (
@@ -169,6 +170,10 @@ func (index *ChecksumIndex) SequentialChecksumList() chunks.SequentialChecksumLi
 
 func (index *ChecksumIndex) WeakCount() int {
     return index.Count
+}
+
+func (index *ChecksumIndex) RootHashFromChecksumSequence() ([]byte, error) {
+    return merkle.SimpleHashFromHashes(index.checkSumSequence.HashList())
 }
 
 func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) chunks.StrongChecksumList {
