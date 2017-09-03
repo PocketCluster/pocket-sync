@@ -166,7 +166,7 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
             blockrepository.NewReadSeekerBlockRepository(
                 0,
                 stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
             ),
         }
     )
@@ -206,22 +206,22 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
             blockrepository.NewReadSeekerBlockRepository(
                 0,
                 stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 1,
                 stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 2,
                 stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 3,
                 stringToReadSeeker(REFERENCE_STRING),
-                blocksources.MakeNullFixedSizeResolver(BLOCKSIZE),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
             ),
         }
     )
@@ -277,7 +277,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     time.Sleep(sl)
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -288,7 +288,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     time.Sleep(sl)
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -299,7 +299,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     time.Sleep(sl)
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -310,7 +310,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     time.Sleep(sl)
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
         }
     )
@@ -387,7 +387,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     <- waiterC[0]
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -397,7 +397,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     <- waiterC[1]
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -407,7 +407,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     <- waiterC[2]
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
 
             blockrepository.NewBlockRepositoryBase(
@@ -417,7 +417,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     <- waiterC[3]
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
-                blocksources.MakeFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
                 nil),
         }
 

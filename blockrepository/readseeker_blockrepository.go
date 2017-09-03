@@ -7,7 +7,7 @@ import (
 func NewReadSeekerBlockRepository(
     repositoryID uint,
     readSeeker   blocksources.ReadSeeker,
-    resolver     blocksources.BlockSourceOffsetResolver,
+    resolver     BlockRepositoryOffsetResolver,
 ) *BlockRepositoryBase {
     return NewBlockRepositoryBase(
         repositoryID,

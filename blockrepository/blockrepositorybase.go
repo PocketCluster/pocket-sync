@@ -28,6 +28,18 @@ type BlockRepositoryRequester interface {
 }
 
 /*
+ * A BlockRepositoryOffsetResolver resolves a blockID to a start offset and an end offset in a file.
+ * It also handles splitting up ranges of blocks into multiple requests, allowing requests to be split down to the
+ * block size, and handling of compressed blocks (given a resolver that can work out the correct range to query for,
+ * and a BlockSourceRequester that will decompress the result into a full sized block)
+ */
+type BlockRepositoryOffsetResolver interface {
+    GetBlockStartOffset(blockID uint) int64
+    GetBlockEndOffset(blockID uint) int64
+    SplitBlockRangeToDesiredSize(reqBlk patcher.MissingBlockSpan) patcher.QueuedRequestList
+}
+
+/*
  * BlockRepositoryBase provides an implementation of blocksource that takes care of every aspect of block handling from
  * a single repository except for the actual syncronous request.
  *
@@ -40,7 +52,7 @@ type BlockRepositoryRequester interface {
 func NewBlockRepositoryBase(
     repositoryID uint,
     requester    BlockRepositoryRequester,
-    resolver     blocksources.BlockSourceOffsetResolver,
+    resolver     BlockRepositoryOffsetResolver,
     verifier     blocksources.BlockVerifier,
 ) *BlockRepositoryBase {
     b := &BlockRepositoryBase{
@@ -55,7 +67,7 @@ func NewBlockRepositoryBase(
 
 type BlockRepositoryBase struct {
     Requester              BlockRepositoryRequester
-    BlockSourceResolver    blocksources.BlockSourceOffsetResolver
+    BlockSourceResolver    BlockRepositoryOffsetResolver
     Verifier               blocksources.BlockVerifier
 
     requestChannel         chan patcher.MissingBlockSpan
@@ -85,10 +97,10 @@ func (b *BlockRepositoryBase) HandleRequest(
         pendingResponse     = &PendingResponseHelper{
             ResponseChannel: responseC,
         }
-        requestQueue        = make(blocksources.QueuedRequestList, 0, 2)
+        requestQueue        = make(patcher.QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(blocksources.UintSlice,         0, 1)
-        responseOrdering    = make(PendingResponses,               0, 1)
+        requestOrdering     = make(blocksources.UintSlice,    0, 1)
+        responseOrdering    = make(PendingResponses,          0, 1)
     )
 
     defer func() {
@@ -103,18 +115,18 @@ func (b *BlockRepositoryBase) HandleRequest(
 
             // if this is not a retrial
             if retryCount == 0 {
-                requestOrdering = append(requestOrdering, nextRequest.StartBlockID)
+                requestOrdering = append(requestOrdering, nextRequest.StartBlock)
                 sort.Sort(sort.Reverse(requestOrdering))
             }
 
-            startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlockID)
-            endOffset := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlockID)
+            startOffset := b.BlockSourceResolver.GetBlockStartOffset(nextRequest.StartBlock)
+            endOffset := b.BlockSourceResolver.GetBlockEndOffset(nextRequest.EndBlock)
 
             retryCount += 1
             response, err := b.Requester.DoRequest(startOffset, endOffset)
             result := blocksources.AsyncResult{
-                StartBlockID: nextRequest.StartBlockID,
-                EndBlockID:   nextRequest.EndBlockID,
+                StartBlockID: nextRequest.StartBlock,
+                EndBlockID:   nextRequest.EndBlock,
                 Data:         response,
                 Err:          err,
             }
@@ -133,8 +145,7 @@ func (b *BlockRepositoryBase) HandleRequest(
                 pendingResponse.Clear()
                 pendingErrors.SetError(patcher.NewRepositoryError(
                     b.repositoryID,
-                    nextRequest.StartBlockID,
-                    nextRequest.EndBlockID,
+                    nextRequest,
                     result.Err))
                 goto resultReport
             }
@@ -153,8 +164,7 @@ func (b *BlockRepositoryBase) HandleRequest(
                 pendingResponse.Clear()
                 pendingErrors.SetError(patcher.NewRepositoryError(
                     b.repositoryID,
-                    nextRequest.StartBlockID,
-                    nextRequest.EndBlockID,
+                    nextRequest,
                     errors.Errorf("The returned block range (%v-%v) did not match the expected checksum for the blocks",
                         result.StartBlockID, result.EndBlockID)))
                 goto resultReport
@@ -192,6 +202,7 @@ func (b *BlockRepositoryBase) HandleRequest(
 
             case pendingErrors.SendIfSet() <- pendingErrors.Err(): {
                 pendingErrors.Clear()
+                return
             }
 
             case pendingResponse.SendIfPending() <- pendingResponse.Response(): {
@@ -213,10 +224,7 @@ func (b *BlockRepositoryBase) HandleRequest(
             case newRequest := <- b.requestChannel: {
                 requestQueue = append(
                     requestQueue,
-                    b.BlockSourceResolver.SplitBlockRangeToDesiredSize(
-                        newRequest.StartBlock,
-                        newRequest.EndBlock,
-                    )...)
+                    b.BlockSourceResolver.SplitBlockRangeToDesiredSize(newRequest)...)
 
                 sort.Sort(sort.Reverse(requestQueue))
             }

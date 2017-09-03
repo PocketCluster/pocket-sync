@@ -11,13 +11,14 @@ import (
 )
 
 const (
-    block_size uint64 = 8
+    block_size = 8
+    repository_id = 21
 )
 
 func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
     var (
         b = NewBlockRepositoryBase(0, nil,
-            blocksources.MakeNullFixedSizeResolver(block_size),
+            MakeNullUniformSizeResolver(block_size),
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -42,9 +43,9 @@ func Test_BlockRepositoryBase_CreateAndClose(t *testing.T) {
 func Test_BlockRepository_Basic_Error(t *testing.T) {
     var (
         r = &blocksources.ErroringRequester{}
-        b = NewBlockRepositoryBase(0,
+        b = NewBlockRepositoryBase(repository_id,
             r,
-            blocksources.MakeNullFixedSizeResolver(block_size),
+            MakeNullUniformSizeResolver(block_size),
             nil)
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -72,6 +73,9 @@ func Test_BlockRepository_Basic_Error(t *testing.T) {
         case <-time.After(time.Second * 10):
             t.Fatal("Timed out waiting for error")
         case err := <-errorC:
+            if err.RepositoryID() != repository_id {
+                t.Fatalf("invalid repository id = %v", err.RepositoryID())
+            }
             t.Log(err.Error())
     }
     if r.RequestCount() != REPOSITORY_RETRY_LIMIT {
@@ -83,12 +87,12 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
     var (
         errorCount = 0
         errorCountC = make(chan int)
-        b = NewBlockRepositoryBase(0,
+        b = NewBlockRepositoryBase(repository_id,
             blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 errorCountC <- 1
                 return nil, &blocksources.TestError{}
             }),
-            blocksources.MakeNullFixedSizeResolver(block_size),
+            MakeNullUniformSizeResolver(block_size),
             blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
                 errorCountC <- 1
                 return false
@@ -123,6 +127,9 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
                 t.Fatal("Timed out waiting for error")
                 return
             case err := <-errorC:
+                if err.RepositoryID() != repository_id {
+                    t.Fatalf("invalid repository id = %v", err.RepositoryID())
+                }
                 t.Log(err.Error())
                 break resultCheck
             case e := <- errorCountC:
@@ -152,7 +159,7 @@ func Test_BlockRepository_Retry_Verify_Partial_Error(t *testing.T) {
                 errorCountC <- 1
                 return nil, &blocksources.TestError{}
             }),
-            blocksources.MakeNullFixedSizeResolver(block_size),
+            MakeNullUniformSizeResolver(block_size),
             blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
                 if partial_error_limit <= <- errorLimitC {
                     return true
@@ -221,7 +228,7 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
             blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return expected, nil
             }),
-            blocksources.MakeNullFixedSizeResolver(block_size),
+            MakeNullUniformSizeResolver(block_size),
             nil,
         )
         waiter      = sync.WaitGroup{}
@@ -264,7 +271,7 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
             blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
                 return content[start:end], nil
             }),
-            blocksources.MakeNullFixedSizeResolver(2),
+            MakeNullUniformSizeResolver(2),
             nil,
         )
         waiter      = sync.WaitGroup{}
@@ -321,7 +328,7 @@ func Test_BlockRepositoryBase_OrderedRequestCompletion(t *testing.T) {
                 <-(channeler[start])
                 return content[start:end], nil
             }),
-            blocksources.MakeNullFixedSizeResolver(1),
+            MakeNullUniformSizeResolver(1),
             nil,
         )
         waiter      = sync.WaitGroup{}
@@ -385,7 +392,7 @@ func Test_BlockRepositoryBase_RequestCountLimiting(t *testing.T) {
                 counterC <- -1
                 return []byte{0, 0}, nil
             }),
-            blocksources.MakeNullFixedSizeResolver(1),
+            MakeNullUniformSizeResolver(1),
             nil,
         )
 

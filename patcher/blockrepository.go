@@ -51,3 +51,18 @@ func (r StackedReponse) Swap(i, j int) {
 func (r StackedReponse) Less(i, j int) bool {
     return r[i].BlockID < r[j].BlockID
 }
+
+//-----------------------------------------------------------------------------
+type QueuedRequestList []MissingBlockSpan
+
+func (r QueuedRequestList) Len() int {
+    return len(r)
+}
+
+func (r QueuedRequestList) Swap(i, j int) {
+    r[i], r[j] = r[j], r[i]
+}
+
+func (r QueuedRequestList) Less(i, j int) bool {
+    return r[i].StartBlock < r[j].StartBlock
+}

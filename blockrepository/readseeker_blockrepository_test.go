@@ -6,7 +6,6 @@ import (
     "sync"
 
     "github.com/Redundancy/go-sync/patcher"
-    "github.com/Redundancy/go-sync/blocksources"
 )
 
 func TestReadFirstBlock(t *testing.T) {
@@ -20,7 +19,7 @@ func TestReadFirstBlock(t *testing.T) {
             bytes.NewReader(
                 []byte(STRING_DATA),
             ),
-            blocksources.MakeNullFixedSizeResolver(BLOCK_SIZE),
+            MakeNullUniformSizeResolver(BLOCK_SIZE),
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)

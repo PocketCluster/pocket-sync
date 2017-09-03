@@ -86,3 +86,16 @@ func (r PendingResponses) Less(i, j int) bool {
     return r[i].BlockID < r[j].BlockID
 }
 
+//-----------------------------------------------------------------------------
+func MakeNullUniformSizeResolver(blockSize int64) *UniformSizeBlockResolver {
+    return &UniformSizeBlockResolver{
+        BlockSize: blockSize,
+    }
+}
+
+func MakeKnownFileSizedBlockResolver(blockSize int64, filesize int64) *UniformSizeBlockResolver {
+    return &UniformSizeBlockResolver{
+        BlockSize: blockSize,
+        FileSize:  filesize,
+    }
+}

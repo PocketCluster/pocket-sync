@@ -2,22 +2,19 @@ package patcher
 
 type RepositoryError struct{
     repositoryID    uint
-    startBlockID    uint
-    endBlockID      uint
+    missingBlk      MissingBlockSpan
     reasonErr       error
 }
 
 func NewRepositoryError(
     repositoryID    uint,
-    startBlockID    uint,
-    endBlockID      uint,
+    missingBlock    MissingBlockSpan,
     reasonErr       error,
 ) *RepositoryError {
     return &RepositoryError{
-        repositoryID:    repositoryID,
-        startBlockID:    startBlockID,
-        endBlockID:      endBlockID,
-        reasonErr:       reasonErr,
+        repositoryID: repositoryID,
+        missingBlk:   missingBlock,
+        reasonErr:    reasonErr,
     }
 }
 
@@ -29,10 +26,6 @@ func (e *RepositoryError) RepositoryID() uint {
     return e.repositoryID
 }
 
-func (e *RepositoryError) StartBlockID() uint {
-    return e.startBlockID
-}
-
-func (e *RepositoryError) EndBlockID() uint {
-    return e.endBlockID
+func (e *RepositoryError) MissingBlock() MissingBlockSpan {
+    return e.missingBlk
 }

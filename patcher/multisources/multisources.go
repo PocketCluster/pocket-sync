@@ -79,8 +79,9 @@ func (m *MultiSourcePatcher) Patch() error {
         poolSize            = len(repositoryPool)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(blocksources.UintSlice, 0, poolSize)
-        responseOrdering    = make(patcher.StackedReponse, 0, poolSize)
+        requestOrdering     = make(blocksources.UintSlice,    0, poolSize)
+        responseOrdering    = make(patcher.StackedReponse,    0, poolSize)
+        retryRequests       = make(patcher.QueuedRequestList, 0, poolSize)
     )
 
     // launch repository pool
@@ -157,7 +158,10 @@ func (m *MultiSourcePatcher) Patch() error {
         select {
             // handle error first
             case err := <- m.repoErrorC: {
-                log.Errorf("repository reports error %v", err.Error())
+                // at this point repository will not be added back to available pool but it's stub still remains in pool
+                log.Errorf("repository #%v reports error %v", err.RepositoryID(), err.Error())
+                retryRequests = append(retryRequests, err.MissingBlock())
+                sort.Sort(sort.Reverse(retryRequests))
                 return errors.Errorf("Failed to read from reference file: %v", err)
             }
 
