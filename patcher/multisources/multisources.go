@@ -91,6 +91,25 @@ func (m *MultiSourcePatcher) Patch() error {
     }
 
     for {
+        // retry failed block
+        poolSize = len(repositoryPool)
+        if 0 < poolSize && len(retryRequests) != 0 {
+            for i := 0; i < poolSize && 0 < len(retryRequests); i++ {
+                var (
+                    rTarget = retryRequests[len(retryRequests) - 1]
+                    pIndex  = rand.Intn(poolSize - i)
+                    poolID  = repositoryPool[pIndex]
+                )
+                // reduce repo pool
+                repositoryPool = delIdentityFromAvailablePool(repositoryPool, poolID)
+                // reduce retry quest
+                retryRequests = retryRequests[:len(retryRequests) - 1]
+                // retry failed target
+                m.repositories[poolID].RequestBlocks(rTarget)
+            }
+        }
+
+        // try next in queue
         poolSize = len(repositoryPool)
         if 0 < poolSize {
             for i := 0; i < poolSize && targetBlock <= endBlock; i++ {

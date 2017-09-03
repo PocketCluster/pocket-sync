@@ -236,8 +236,8 @@ func TestRequestCountLimiting(t *testing.T) {
 
     defer func() {
         b.Close()
-        close(counter)
-        close(waiter)
+        //close(counter)
+        //close(waiter)
     }()
 
     go func() {
