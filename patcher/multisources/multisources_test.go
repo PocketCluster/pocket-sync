@@ -91,16 +91,17 @@ func(t *testBlkRef) EndBlockID() uint {
 }
 
 func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
-    if uint(len(REFERENCE_CHKSEQ)) <= blockID {
-        return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
+    for _, c := range REFERENCE_CHKSEQ {
+        if c.ChunkOffset == blockID {
+            return patcher.MissingBlockSpan{
+                BlockSize:     c.Size,
+                StartBlock:    c.ChunkOffset,
+                EndBlock:      c.ChunkOffset,
+            }, nil
+        }
     }
-    missing := REFERENCE_CHKSEQ[blockID]
-    return patcher.MissingBlockSpan{
-        BlockSize:     missing.Size,
-        StartBlock:    missing.ChunkOffset,
-        EndBlock:      missing.ChunkOffset,
-    }, nil
 
+    return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
 }
 
 func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {

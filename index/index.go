@@ -208,15 +208,17 @@ func (index *ChecksumIndex) EndBlockID() uint {
 }
 
 func (index *ChecksumIndex) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
-    if uint(len(index.checkSumSequence)) <= blockID {
-        return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
+    for _, c := range index.checkSumSequence {
+        if c.ChunkOffset == blockID {
+            return patcher.MissingBlockSpan{
+                BlockSize:     c.Size,
+                StartBlock:    c.ChunkOffset,
+                EndBlock:      c.ChunkOffset,
+            }, nil
+        }
     }
-    missing := index.checkSumSequence[blockID]
-    return patcher.MissingBlockSpan{
-        BlockSize:     missing.Size,
-        StartBlock:    missing.ChunkOffset,
-        EndBlock:      missing.ChunkOffset,
-    }, nil
+
+    return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
 }
 
 func (index *ChecksumIndex) VerifyRootHash(hashes [][]byte) error {

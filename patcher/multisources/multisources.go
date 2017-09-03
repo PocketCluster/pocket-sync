@@ -124,6 +124,7 @@ func (m *MultiSourcePatcher) Patch() error {
                 repositoryPool = uslice.DelElementFromSlice(repositoryPool, poolID)
 
                 // this is a critical error
+                // TODO test error conditions & make sure all channels closed properly
                 missing, err := m.blockRef.MissingBlockSpanForID(targetBlock)
                 if err != nil {
                     return errors.WithStack(err)
