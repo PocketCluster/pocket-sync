@@ -617,6 +617,10 @@ func Test_All_Repositories_Failure(t *testing.T) {
     setup()
     defer clean()
 
+    const (
+        error_trigger_offset int64 = 60
+    )
+
     type repoDelay struct {
         rID int
         sleep time.Duration
@@ -634,7 +638,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 0,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    if start < 60 {
+                    if start < error_trigger_offset {
                         sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
                         countC <- repoDelay{0,sl}
                         time.Sleep(sl)
@@ -648,7 +652,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 1,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    if start < 60 {
+                    if start < error_trigger_offset {
                         sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
                         countC <- repoDelay{1,sl}
                         time.Sleep(sl)
@@ -662,7 +666,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 2,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    if start < 60 {
+                    if start < error_trigger_offset {
                         sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
                         countC <- repoDelay{2,sl}
                         time.Sleep(sl)
@@ -676,7 +680,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 3,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    if start < 60 {
+                    if start < error_trigger_offset {
                         sl := time.Millisecond * time.Duration(100 * rand.Intn(10))
                         countC <- repoDelay{3,sl}
                         time.Sleep(sl)
