@@ -91,6 +91,11 @@ func (m *MultiSourcePatcher) Patch() error {
     }
 
     for {
+        // we don't check 'endBlock == finishedBlock' condition here as it should only happen at one specific place
+        if len(m.repositories) == 0 {
+            return errors.Errorf("[ERR] failed to retrieve blocks from all repositories.")
+        }
+
         // retry failed block
         poolSize = len(repositoryPool)
         if 0 < poolSize && len(retryRequests) != 0 {
@@ -175,12 +180,16 @@ func (m *MultiSourcePatcher) Patch() error {
         }
 
         select {
-            // handle error first
+            // at this point, the erronous repository will not be added back to available pool and removed from pool
             case err := <- m.repoErrorC: {
-                // at this point repository will not be added back to available pool but it's stub still remains in pool
                 log.Errorf("repository #%v reports error %v", err.RepositoryID(), err.Error())
+
+                // re-stack failed request
                 retryRequests = append(retryRequests, err.MissingBlock())
                 sort.Sort(sort.Reverse(retryRequests))
+
+                // remove repository from repository pool
+                delete(m.repositories, err.RepositoryID())
             }
 
             case result := <- m.repoResponseC: {
