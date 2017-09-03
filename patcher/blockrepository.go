@@ -43,6 +43,8 @@ type RepositoryResponse struct {
     RepositoryID    uint
     BlockID         uint
     Data            []byte
+    WeakChecksum    []byte
+    StrongChecksum  []byte
 }
 
 type StackedReponse []RepositoryResponse

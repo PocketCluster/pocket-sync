@@ -55,5 +55,4 @@ type MissingBlockSpan struct {
 type BlockReponse struct {
     StartBlock      uint
     Data           []byte
-    StrongCheckSum []byte
 }

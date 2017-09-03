@@ -77,6 +77,9 @@ func (m *MultiSourcePatcher) Patch() error {
         repositoryPool      = makeRepositoryPoolFromMap(m.repositories)
         poolSize            = len(repositoryPool)
 
+        // collect strong checksums
+        sChksumSequence     = make([][]byte, 0, 1)
+
         // enable us to order responses for the active requests, lowest to highest
         requestOrdering     = make(uslice.UintSlice,          0, poolSize)
         responseOrdering    = make(patcher.StackedReponse,    0, poolSize)
@@ -155,13 +158,17 @@ func (m *MultiSourcePatcher) Patch() error {
             if lowestRequest == lowestResponse {
 
                 for i := 0; i < responseSize; i++ {
+                    // save finished block
+                    finishedBlock    = requestOrdering[len(requestOrdering) - 1]
+                    // save result to output
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
                         log.Errorf("[PATCHER] could not write data to output: %v", err)
                     }
-
-                    // save finished block
-                    finishedBlock    = requestOrdering[len(requestOrdering) - 1]
+                    // save Strong checksum to list
+                    if result.StrongChecksum != nil {
+                        sChksumSequence = append(sChksumSequence, result.StrongChecksum)
+                    }
 
                     // remove the lowest response queue
                     requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
@@ -176,7 +183,10 @@ func (m *MultiSourcePatcher) Patch() error {
 
             // *** PERFECT END CONDITION ***
             if endBlock == finishedBlock {
-                return nil
+                if len(sChksumSequence) == 0 {
+                    return nil
+                }
+                return m.blockRef.VerifyRootHash(sChksumSequence)
             }
         }
 

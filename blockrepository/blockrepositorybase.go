@@ -40,6 +40,12 @@ type BlockRepositoryOffsetResolver interface {
     SplitBlockRangeToDesiredSize(reqBlk patcher.MissingBlockSpan) patcher.QueuedRequestList
 }
 
+// Checks blocks against their expected checksum
+type BlockChecksumVerifier interface {
+    // return results in order of weak checksum, strong checksum, error
+    BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, []byte, error)
+}
+
 /*
  * BlockRepositoryBase provides an implementation of blocksource that takes care of every aspect of block handling from
  * a single repository except for the actual syncronous request.
@@ -54,7 +60,7 @@ func NewBlockRepositoryBase(
     repositoryID uint,
     requester    BlockRepositoryRequester,
     resolver     BlockRepositoryOffsetResolver,
-    verifier     blocksources.BlockVerifier,
+    verifier BlockChecksumVerifier,
 ) *BlockRepositoryBase {
     b := &BlockRepositoryBase{
         Requester:           requester,
@@ -69,7 +75,7 @@ func NewBlockRepositoryBase(
 type BlockRepositoryBase struct {
     Requester              BlockRepositoryRequester
     BlockSourceResolver    BlockRepositoryOffsetResolver
-    Verifier               blocksources.BlockVerifier
+    Verifier               BlockChecksumVerifier
 
     requestChannel         chan patcher.MissingBlockSpan
     repositoryID           uint
@@ -91,7 +97,9 @@ func (b *BlockRepositoryBase) HandleRequest(
     responseC   chan patcher.RepositoryResponse,
 ) {
     var (
-        retryCount      int = 0
+        retryCount   int    = 0
+        wChksum      []byte = nil
+        sChksum      []byte = nil
         pendingErrors       = &ErrorWatcher{
             ErrorChannel: errorC,
         }
@@ -100,7 +108,7 @@ func (b *BlockRepositoryBase) HandleRequest(
         }
         requestQueue        = make(patcher.QueuedRequestList, 0, 2)
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering     = make(uslice.UintSlice,    0, 1)
+        requestOrdering     = make(uslice.UintSlice,          0, 1)
         responseOrdering    = make(PendingResponses,          0, 1)
     )
 
@@ -152,23 +160,37 @@ func (b *BlockRepositoryBase) HandleRequest(
             }
 
             // verify hash
-            if b.Verifier != nil && !b.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
-                // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
-                if retryCount < REPOSITORY_RETRY_LIMIT {
-                    time.Sleep(time.Second)
-                    continue requestLoop
-                }
+            if b.Verifier != nil {
+                wc, sc, herr := b.Verifier.BlockChecksumForRange(result.StartBlockID, result.Data)
+                if herr != nil {
+                    // clear checksum vars for reuse
+                    wChksum = nil
+                    sChksum = nil
 
-                // retryCount exceed limit. Report the error and continue to the next one
-                requestQueue = requestQueue[:len(requestQueue)-1]
-                requestOrdering = requestOrdering[:len(requestOrdering)-1]
-                pendingResponse.Clear()
-                pendingErrors.SetError(patcher.NewRepositoryError(
-                    b.repositoryID,
-                    nextRequest,
-                    errors.Errorf("The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                        result.StartBlockID, result.EndBlockID)))
-                goto resultReport
+                    // if error present and hasn't been retried for REPOSITORY_RETRY_LIMIT...
+                    if retryCount < REPOSITORY_RETRY_LIMIT {
+                        time.Sleep(time.Second)
+                        continue requestLoop
+                    }
+
+                    // retryCount exceed limit. Report the error and continue to the next one
+                    requestQueue = requestQueue[:len(requestQueue)-1]
+                    requestOrdering = requestOrdering[:len(requestOrdering)-1]
+                    pendingResponse.Clear()
+                    pendingErrors.SetError(patcher.NewRepositoryError(
+                        b.repositoryID,
+                        nextRequest,
+                        errors.Errorf("The returned block range (%v-%v) did not match the expected checksum for the blocks. %v",
+                            result.StartBlockID, result.EndBlockID, herr.Error())))
+                    goto resultReport
+                } else {
+                    // when there is no error, take the checksums
+                    wChksum = wc
+                    sChksum = sc
+                }
+            } else {
+                wChksum = nil
+                sChksum = nil
             }
 
             // everything works great. remove request from queue and reset retryCount
@@ -178,13 +200,18 @@ func (b *BlockRepositoryBase) HandleRequest(
             // enqueue result
             responseOrdering = append(responseOrdering,
                 patcher.RepositoryResponse{
-                    RepositoryID: b.repositoryID,
-                    BlockID:      result.StartBlockID,
-                    Data:         result.Data,
+                    RepositoryID:   b.repositoryID,
+                    BlockID:        result.StartBlockID,
+                    Data:           result.Data,
+                    WeakChecksum:   wChksum,
+                    StrongChecksum: sChksum,
                 })
-
             // sort high to low
             sort.Sort(sort.Reverse(responseOrdering))
+
+            // clear checksum vars for reuse
+            wChksum = nil
+            sChksum = nil
 
             // if we just got the lowest requested block, we can set the response. Otherwise, wait.
             lowestRequest := requestOrdering[len(requestOrdering)-1]

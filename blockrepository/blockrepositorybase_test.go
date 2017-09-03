@@ -6,6 +6,7 @@ import (
     "testing"
     "time"
 
+    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/patcher"
     "github.com/Redundancy/go-sync/blocksources"
 )
@@ -93,9 +94,9 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
                 return nil, &blocksources.TestError{}
             }),
             MakeNullUniformSizeResolver(block_size),
-            blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, []byte, error) {
                 errorCountC <- 1
-                return false
+                return nil, nil, errors.Errorf("test")
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -160,13 +161,13 @@ func Test_BlockRepository_Retry_Verify_Partial_Error(t *testing.T) {
                 return nil, &blocksources.TestError{}
             }),
             MakeNullUniformSizeResolver(block_size),
-            blocksources.FunctionVerifier(func(startBlockID uint, data []byte) bool {
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, []byte, error) {
                 if partial_error_limit <= <- errorLimitC {
-                    return true
+                    return []byte{0x1B}, []byte{0x1C}, nil
                 }
 
                 errorCountC <- 1
-                return false
+                return nil, nil, errors.Errorf("test")
             }))
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
