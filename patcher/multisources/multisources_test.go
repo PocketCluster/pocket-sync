@@ -69,8 +69,8 @@ func setup() {
     if err != nil {
         log.Panic(err.Error())
     }
-    log.Debugf("Root Merkle Hash %v", REFERENCE_RTHASH)
     REFERENCE_RTHASH = rootchksum
+    log.Debugf("Root Merkle Hash %v", REFERENCE_RTHASH)
 }
 
 func clean() {
@@ -213,47 +213,33 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
 
     var (
         out   = bytes.NewBuffer(nil)
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            m := ripemd160.New()
+            m.Write(data)
+            return m.Sum(nil), nil
+        })
+
         repos = []patcher.BlockRepository{
             blockrepository.NewReadSeekerBlockRepository(
                 0,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
-                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
-                    m := ripemd160.New()
-                    m.Write(data)
-                    return m.Sum(nil), nil
-                }),
-            ),
+                verifier),
             blockrepository.NewReadSeekerBlockRepository(
                 1,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
-                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
-                    m := ripemd160.New()
-                    m.Write(data)
-                    return m.Sum(nil), nil
-                }),
-            ),
+                verifier),
             blockrepository.NewReadSeekerBlockRepository(
                 2,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
-                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
-                    m := ripemd160.New()
-                    m.Write(data)
-                    return m.Sum(nil), nil
-                }),
-            ),
+                verifier),
             blockrepository.NewReadSeekerBlockRepository(
                 3,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
-                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
-                    m := ripemd160.New()
-                    m.Write(data)
-                    return m.Sum(nil), nil
-                }),
-            ),
+                verifier),
         }
     )
 
@@ -296,6 +282,11 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
         countC   = make(chan repoDelay)
         hitCount = []int{0, 0, 0, 0}
         slpCount = []time.Duration{0, 0, 0, 0}
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            m := ripemd160.New()
+            m.Write(data)
+            return m.Sum(nil), nil
+        })
 
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
@@ -309,7 +300,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 1,
@@ -320,7 +311,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 2,
@@ -331,7 +322,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 3,
@@ -342,7 +333,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
         }
     )
     waiter.Add(1)
@@ -409,6 +400,12 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
         }
 
         out   = bytes.NewBuffer(nil)
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            m := ripemd160.New()
+            m.Write(data)
+            return m.Sum(nil), nil
+        })
+
         repos = []patcher.BlockRepository{
 
             blockrepository.NewBlockRepositoryBase(
@@ -419,7 +416,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 1,
@@ -429,7 +426,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 2,
@@ -439,7 +436,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 3,
@@ -449,7 +446,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
         }
 
         isAllRepoInquired = func(sblks []int64) bool {
@@ -551,6 +548,11 @@ func Test_Single_Repository_Failure(t *testing.T) {
         countC   = make(chan repoDelay)
         hitCount = []int{0, 0, 0, 0}
         slpCount = []time.Duration{0, 0, 0, 0}
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            m := ripemd160.New()
+            m.Write(data)
+            return m.Sum(nil), nil
+        })
 
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
@@ -564,7 +566,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 1,
@@ -578,7 +580,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
                     return nil, &blocksources.TestError{}
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 2,
@@ -589,7 +591,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 3,
@@ -600,7 +602,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
                     return []byte(REFERENCE_STRING)[start:end], nil
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
         }
     )
     waiter.Add(1)
@@ -662,6 +664,11 @@ func Test_All_Repositories_Failure(t *testing.T) {
         countC   = make(chan repoDelay)
         hitCount = []int{0, 0, 0, 0}
         slpCount = []time.Duration{0, 0, 0, 0}
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            m := ripemd160.New()
+            m.Write(data)
+            return m.Sum(nil), nil
+        })
 
         out   = bytes.NewBuffer(nil)
         repos = []patcher.BlockRepository{
@@ -678,7 +685,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
                     return nil, &blocksources.TestError{}
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 1,
@@ -692,7 +699,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
                     return nil, &blocksources.TestError{}
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 2,
@@ -706,7 +713,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
                     return nil, &blocksources.TestError{}
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
 
             blockrepository.NewBlockRepositoryBase(
                 3,
@@ -720,7 +727,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
                     return nil, &blocksources.TestError{}
                 }),
                 blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
-                nil),
+                verifier),
         }
     )
     waiter.Add(1)

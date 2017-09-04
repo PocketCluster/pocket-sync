@@ -158,8 +158,6 @@ func (m *MultiSourcePatcher) Patch() error {
             if lowestRequest == lowestResponse {
 
                 for i := 0; i < responseSize; i++ {
-                    // save finished block
-                    finishedBlock    = requestOrdering[len(requestOrdering) - 1]
                     // save result to output
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
@@ -169,6 +167,8 @@ func (m *MultiSourcePatcher) Patch() error {
                     if result.StrongChecksum != nil {
                         sChksumSequence = append(sChksumSequence, result.StrongChecksum)
                     }
+                    // save finished block
+                    finishedBlock    = requestOrdering[len(requestOrdering) - 1]
 
                     // remove the lowest response queue
                     requestOrdering  = requestOrdering[:len(requestOrdering) - 1]
@@ -183,9 +183,6 @@ func (m *MultiSourcePatcher) Patch() error {
 
             // *** PERFECT END CONDITION ***
             if endBlock == finishedBlock {
-                if len(sChksumSequence) == 0 {
-                    return nil
-                }
                 return m.blockRef.VerifyRootHash(sChksumSequence)
             }
         }
