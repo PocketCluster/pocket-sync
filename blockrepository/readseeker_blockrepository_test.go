@@ -20,6 +20,9 @@ func TestReadFirstBlock(t *testing.T) {
                 []byte(STRING_DATA),
             ),
             MakeNullUniformSizeResolver(BLOCK_SIZE),
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                return []byte{0x41}, nil
+            }),
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -54,7 +57,12 @@ func TestReadFirstBlock(t *testing.T) {
         t.Errorf(
             "Unexpected result data: \"%v\" expected: \"%v\"",
             string(result.Data),
-            EXPECTED,
-        )
+            EXPECTED)
+    }
+    if bytes.Compare(result.StrongChecksum, []byte{0x41}) != 0 {
+        t.Errorf(
+            "Unexpected result data: \"%v\" expected: \"%v\"",
+            string(result.StrongChecksum),
+            []byte{0x41})
     }
 }

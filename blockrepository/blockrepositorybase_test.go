@@ -121,7 +121,6 @@ func Test_BlockRepository_Retry_Verify_Error(t *testing.T) {
         EndBlock:   1,
     })
 
-
     resultCheck: for {
         select {
             case <-time.After(time.Second * 10):
@@ -230,7 +229,9 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
                 return expected, nil
             }),
             MakeNullUniformSizeResolver(block_size),
-            nil,
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                return []byte{0x41}, nil
+            }),
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -262,6 +263,11 @@ func Test_BlockRepositoryBase_Request(t *testing.T) {
     if bytes.Compare(result.Data, expected) != 0 {
         t.Errorf("Unexpected data in result: %v", result.Data)
     }
+    if bytes.Compare(result.StrongChecksum, []byte{0x41}) != 0 {
+        t.Errorf(
+            "Unexpected result data: \"%v\" expected: \"%v\"",
+            string(result.StrongChecksum), []byte{0x41})
+    }
 }
 
 func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
@@ -273,7 +279,16 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
                 return content[start:end], nil
             }),
             MakeNullUniformSizeResolver(2),
-            nil,
+            FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                switch startBlockID {
+                case 1: {
+                    return []byte{0x41}, nil
+                }
+                default:
+                    return []byte{0x4A}, nil
+                }
+
+            }),
         )
         waiter      = sync.WaitGroup{}
         exitC       = make(chan bool)
@@ -305,6 +320,22 @@ func Test_BlockRepositoryBase_Consequent_Request(t *testing.T) {
                 }
                 if bytes.Compare(r.Data, content[i*2:(i+1)*2]) != 0 {
                     t.Errorf("Unexpected result content for result %v: %v", i+1, string(r.Data))
+                }
+                switch r.BlockID {
+                    case 1: {
+                        if bytes.Compare(r.StrongChecksum, []byte{0x41}) != 0 {
+                            t.Errorf(
+                                "Unexpected result data: \"%v\" expected: \"%v\"",
+                                string(r.StrongChecksum), []byte{0x41})
+                        }
+                    }
+                    default: {
+                        if bytes.Compare(r.StrongChecksum, []byte{0x4A}) != 0 {
+                            t.Errorf(
+                                "Unexpected result data: \"%v\" expected: \"%v\"",
+                                string(r.StrongChecksum), []byte{0x4A})
+                        }
+                    }
                 }
             }
             case <-time.After(time.Second): {

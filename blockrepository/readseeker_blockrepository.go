@@ -8,11 +8,12 @@ func NewReadSeekerBlockRepository(
     repositoryID uint,
     readSeeker   blocksources.ReadSeeker,
     resolver     BlockRepositoryOffsetResolver,
+    verifier     BlockChecksumVerifier,
 ) *BlockRepositoryBase {
     return NewBlockRepositoryBase(
         repositoryID,
         blocksources.NewReadSeekerRequester(readSeeker),
         resolver,
-        nil, // TODO: No verifier!
+        verifier,
     )
 }

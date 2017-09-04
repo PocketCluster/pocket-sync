@@ -40,11 +40,10 @@ type SeqChecksumReference interface {
 
 //-----------------------------------------------------------------------------
 type RepositoryResponse struct {
-    RepositoryID    uint
-    BlockID         uint
-    Data            []byte
-    WeakChecksum    []byte
-    StrongChecksum  []byte
+    RepositoryID   uint
+    BlockID        uint
+    Data           []byte
+    StrongChecksum []byte
 }
 
 type StackedReponse []RepositoryResponse

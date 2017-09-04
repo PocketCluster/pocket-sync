@@ -60,7 +60,7 @@ func NewBlockRepositoryBase(
     repositoryID uint,
     requester    BlockRepositoryRequester,
     resolver     BlockRepositoryOffsetResolver,
-    verifier BlockChecksumVerifier,
+    verifier     BlockChecksumVerifier,
 ) *BlockRepositoryBase {
     b := &BlockRepositoryBase{
         Requester:           requester,

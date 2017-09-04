@@ -19,6 +19,7 @@ import (
     "github.com/Redundancy/go-sync/blockrepository"
     "github.com/Redundancy/go-sync/merkle"
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/rollsum"
     "github.com/Redundancy/go-sync/util/uslice"
 )
 
@@ -63,13 +64,13 @@ func setup() {
     }
 
     BLOCK_COUNT = len(REFERENCE_BLOCKS)
-    REFERENCE_CHKSEQ = chunks.BuildSequentialChecksum(REFERENCE_BLOCKS, BLOCKSIZE)
-    REFERENCE_RTHASH, err := REFERENCE_CHKSEQ.RootHash()
+    REFERENCE_CHKSEQ = buildSequentialChecksum(REFERENCE_BLOCKS, REFERENCE_HASHES, BLOCKSIZE)
+    rootchksum, err := REFERENCE_CHKSEQ.RootHash()
     if err != nil {
         log.Panic(err.Error())
-    } else {
-        log.Debugf("Root Merkle Hash %v", REFERENCE_RTHASH)
     }
+    log.Debugf("Root Merkle Hash %v", REFERENCE_RTHASH)
+    REFERENCE_RTHASH = rootchksum
 }
 
 func clean() {
@@ -83,6 +84,32 @@ func clean() {
 
 func stringToReadSeeker(input string) io.ReadSeeker {
     return bytes.NewReader([]byte(input))
+}
+
+func buildSequentialChecksum(refBlks []string, sChksums [][]byte, blocksize int) chunks.SequentialChecksumList {
+    var (
+        chksum = chunks.SequentialChecksumList{}
+        rsum   = rollsum.NewRollsum64(uint(blocksize))
+    )
+
+    for i := 0; i < len(refBlks); i++ {
+        var (
+            wsum = make([]byte, blocksize)
+            blk     = []byte(refBlks[i])
+        )
+        rsum.Reset()
+        rsum.SetBlock(blk)
+        rsum.GetSum(wsum)
+
+        chksum = append(
+            chksum,
+            chunks.ChunkChecksum{
+                ChunkOffset:    uint(i),
+                WeakChecksum:   wsum,
+                StrongChecksum: sChksums[i],
+            })
+    }
+    return chksum
 }
 
 type testBlkRef struct{}
@@ -146,6 +173,11 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
                 0,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
             ),
         }
     )
@@ -186,21 +218,41 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
                 0,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 1,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 2,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
             ),
             blockrepository.NewReadSeekerBlockRepository(
                 3,
                 stringToReadSeeker(REFERENCE_STRING),
                 blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
             ),
         }
     )
@@ -703,4 +755,43 @@ func Test_All_Repositories_Failure(t *testing.T) {
     for c := range hitCount {
         t.Logf("Repo #%d hit %v times | sleep %v", c, hitCount[c], slpCount[c]/time.Duration(hitCount[c]))
     }
+}
+
+func Test_RootChecksum_Failure(t *testing.T) {
+    setup()
+    defer clean()
+    REFERENCE_RTHASH = []byte{0xFF, 0xA1}
+
+    var (
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+            blockrepository.NewReadSeekerBlockRepository(
+                0,
+                stringToReadSeeker(REFERENCE_STRING),
+                blockrepository.MakeNullUniformSizeResolver(BLOCKSIZE),
+                blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+                    m := ripemd160.New()
+                    m.Write(data)
+                    return m.Sum(nil), nil
+                }),
+            ),
+        }
+    )
+
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        &testBlkRef{},
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    err = src.Patch()
+    if err == nil {
+        t.Fatal("Patch should fail as root checksum is alternated")
+    } else {
+        t.Log(err.Error())
+    }
+    src.closeRepositories()
 }
