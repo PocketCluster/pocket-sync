@@ -6,6 +6,7 @@ import (
     "testing"
 
     "github.com/Redundancy/go-sync/chunks"
+    "github.com/Redundancy/go-sync/index"
     "github.com/Redundancy/go-sync/util/readers"
 )
 
@@ -156,7 +157,7 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
         output = bytes.NewBuffer(nil)
     )
 
-    _, err := checksum.BuildSequentialAndRootChecksum(
+    rcs, err := checksum.BuildSequentialAndRootChecksum(
         readers.OneReader(BLOCKSIZE*BLOCK_COUNT),
         output,
     )
@@ -175,17 +176,24 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
     }
 
     results, err := chunks.LoadChecksumsFromReader(output, weakSize, strongSize)
-
     if err != nil {
         t.Fatal(err)
     }
-
     if len(results) != BLOCK_COUNT {
         t.Fatalf("Results too short! %v", len(results))
     }
 
-    first := results[0]
+    // Make an index that we can use against our local checksums
+    i := index.MakeChecksumIndex(results)
+    lrcs, err := i.SequentialChecksumList().RootHash()
+    if err != nil {
+        t.Fatal(err)
+    }
+    if bytes.Compare(lrcs, rcs) != 0 {
+        t.Errorf("loaded root checksum is different from generated checksum")
+    }
 
+    first := results[0]
     for i, chk := range results {
         if chk.ChunkOffset != uint(i) {
             t.Errorf("Unexpected offset %v on chunk %v", chk.ChunkOffset, i)
