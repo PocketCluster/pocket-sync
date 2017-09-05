@@ -122,6 +122,8 @@ type ChecksumResults struct {
     Checksums []chunks.ChunkChecksum
     // only used for the last item
     Filechecksum []byte
+    // checksum sequence size
+    SequenceSize uint32
     // signals that this is the last item
     Err error
 }
@@ -151,14 +153,14 @@ func (check *FileChecksumGenerator) generate(
     defer close(resultChan)
 
     var (
-        buffer = make([]byte, check.BlockSize())
-        results = make([]chunks.ChunkChecksum, 0, blocksPerResult)
+        buffer       = make([]byte, check.BlockSize())
+        results      = make([]chunks.ChunkChecksum, 0, blocksPerResult)
 
         // these hashes are generated and reset to make it clean
         // As these are for one-time use only, throw away as soon as you're done
-        rollingHash = check.GetWeakRollingHash()
+        rollingHash  = check.GetWeakRollingHash()
         fullChecksum = check.GetFileHash()
-        strongHash = check.GetStrongHash()
+        strongHash   = check.GetStrongHash()
     )
 
     i := uint(0)
@@ -178,7 +180,7 @@ func (check *FileChecksumGenerator) generate(
         strongHash.Write(section)
 
         strongChecksumValue := make([]byte, 0, strongHash.Size())
-        weakChecksumValue := make([]byte, rollingHash.Size())
+        weakChecksumValue   := make([]byte, rollingHash.Size())
 
         rollingHash.GetSum(weakChecksumValue)
         strongChecksumValue = strongHash.Sum(strongChecksumValue)
@@ -196,8 +198,7 @@ func (check *FileChecksumGenerator) generate(
                 Size:           blockSize,
                 WeakChecksum:   weakChecksumValue,
                 StrongChecksum: strongChecksumValue,
-            },
-        )
+            })
 
         i++
 

@@ -6,11 +6,13 @@ import (
     "sort"
 
     "github.com/Redundancy/go-sync/patcher"
+    "github.com/Redundancy/go-sync/util/uslice"
 )
 
 /*
- * BlockSourceRequester does synchronous requests on a remote source of blocks concurrency is handled by the
- * BlockSourceBase. This provides a simple way of implementing a particular
+ * BlockSourceRequester does synchronous requests on a remote source of blocks.
+ * Concurrency is handled by the BlockSourceBase.
+ * This provides a simple way of implementing a particular
  */
 type BlockSourceRequester interface {
     // This method is called on multiple goroutines, and must support simultaneous requests
@@ -62,6 +64,13 @@ func NewBlockSourceBase(
     return b
 }
 
+const (
+    STATE_RUNNING       = iota
+    STATE_EXITING
+)
+
+var BlockSourceAlreadyClosedError = errors.New("Block source was already closed")
+
 /*
  * BlockSourceBase provides an implementation of blocksource that takes care of everything except for the actual
  * asyncronous request. this makes blocksources easier and faster to build reliably.
@@ -73,25 +82,19 @@ type BlockSourceBase struct {
     Verifier            BlockVerifier
 
     // The number of requests that BlockSourceBase may service at once
-    ConcurrentRequests int
+    ConcurrentRequests  int
 
-    // The number of bytes that BlockSourceBase may have in-flight
-    // (requested + pending delivery)
-    ConcurrentBytes int64
+    // The number of bytes that BlockSourceBase may have in-flight (requested + pending delivery)
+    ConcurrentBytes     int64
 
-    hasQuit         bool
-    exitChannel     chan bool
-    errorChannel    chan error
-    responseChannel chan patcher.BlockReponse
-    requestChannel  chan patcher.MissingBlockSpan
+    hasQuit             bool
+    exitChannel         chan bool
+    errorChannel        chan error
+    responseChannel     chan patcher.BlockReponse
+    requestChannel      chan patcher.MissingBlockSpan
 
-    bytesRequested int64
+    bytesRequested      int64
 }
-
-const (
-    STATE_RUNNING = iota
-    STATE_EXITING
-)
 
 func (s *BlockSourceBase) ReadBytes() int64 {
     return s.bytesRequested
@@ -110,8 +113,6 @@ func (s *BlockSourceBase) GetResultChannel() <-chan patcher.BlockReponse {
 func (s *BlockSourceBase) EncounteredError() <-chan error {
     return s.errorChannel
 }
-
-var BlockSourceAlreadyClosedError = errors.New("Block source was already closed")
 
 func (s *BlockSourceBase) Close() (err error) {
     // if it has already been closed, just recover
@@ -139,17 +140,22 @@ func (s *BlockSourceBase) loop() {
     }()
 
     var (
-        state = STATE_RUNNING
-        inflightRequests = 0
-        //inflightBytes = int64(0)
-        pendingErrors = &errorWatcher{errorChannel: s.errorChannel}
-        pendingResponse = &pendingResponseHelper{responseChannel: s.responseChannel}
-        resultChan = make(chan asyncResult)
-        requestQueue = make(QueuedRequestList, 0, s.ConcurrentRequests*2)
+        state               = STATE_RUNNING
+        inflightRequests    = 0
+        //inflightBytes     = int64(0)
+
+        pendingErrors       = &ErrorWatcher{
+            ErrorChannel: s.errorChannel,
+        }
+        pendingResponse     = &PendingResponseHelper{
+            ResponseChannel: s.responseChannel,
+        }
+        resultChan          = make(chan AsyncResult)
+        requestQueue        = make(QueuedRequestList, 0, s.ConcurrentRequests * 2)
 
         // enable us to order responses for the active requests, lowest to highest
-        requestOrdering = make(UintSlice, 0, s.ConcurrentRequests)
-        responseOrdering = make(PendingResponses, 0, s.ConcurrentRequests)
+        requestOrdering     = make(uslice.UintSlice,  0, s.ConcurrentRequests)
+        responseOrdering    = make(PendingResponses,  0, s.ConcurrentRequests)
     )
 
     defer close(resultChan)
@@ -180,11 +186,11 @@ func (s *BlockSourceBase) loop() {
                     endOffset,
                 )
 
-                resultChan <- asyncResult{
-                    startBlockID: nextRequest.StartBlockID,
-                    endBlockID:   nextRequest.EndBlockID,
-                    data:         result,
-                    err:          err,
+                resultChan <- AsyncResult{
+                    StartBlockID: nextRequest.StartBlockID,
+                    EndBlockID:   nextRequest.EndBlockID,
+                    Data:         result,
+                    Err:          err,
                 }
             }()
 
@@ -203,33 +209,34 @@ func (s *BlockSourceBase) loop() {
 
                 sort.Sort(sort.Reverse(requestQueue))
             }
+
             case result := <-resultChan: {
                 inflightRequests -= 1
 
-                if result.err != nil {
-                    pendingErrors.setError(result.err)
-                    pendingResponse.clear()
+                if result.Err != nil {
+                    pendingErrors.SetError(result.Err)
+                    pendingResponse.Clear()
                     state = STATE_EXITING
                     break
                 }
 
-                s.bytesRequested += int64(len(result.data))
+                s.bytesRequested += int64(len(result.Data))
 
-                if s.Verifier != nil && !s.Verifier.VerifyBlockRange(result.startBlockID, result.data) {
-                    pendingErrors.setError(
+                if s.Verifier != nil && !s.Verifier.VerifyBlockRange(result.StartBlockID, result.Data) {
+                    pendingErrors.SetError(
                         fmt.Errorf(
                             "The returned block range (%v-%v) did not match the expected checksum for the blocks",
-                            result.startBlockID,
-                            result.endBlockID))
-                    pendingResponse.clear()
+                            result.StartBlockID,
+                            result.EndBlockID))
+                    pendingResponse.Clear()
                     state = STATE_EXITING
                     break
                 }
 
                 responseOrdering = append(responseOrdering,
                     patcher.BlockReponse{
-                        StartBlock: result.startBlockID,
-                        Data:       result.data,
+                        StartBlock: result.StartBlockID,
+                        Data:       result.Data,
                     })
 
                 // sort high to low
@@ -239,15 +246,15 @@ func (s *BlockSourceBase) loop() {
                 // the response. Otherwise, wait.
                 lowestRequest := requestOrdering[len(requestOrdering)-1]
 
-                if lowestRequest == result.startBlockID {
+                if lowestRequest == result.StartBlockID {
                     lowestResponse := responseOrdering[len(responseOrdering)-1]
-                    pendingResponse.clear()
-                    pendingResponse.setResponse(&lowestResponse)
+                    pendingResponse.Clear()
+                    pendingResponse.SetResponse(&lowestResponse)
                 }
             }
 
-            case pendingResponse.sendIfPending() <- pendingResponse.Response(): {
-                pendingResponse.clear()
+            case pendingResponse.SendIfPending() <- pendingResponse.Response(): {
+                pendingResponse.Clear()
                 responseOrdering = responseOrdering[:len(responseOrdering)-1]
                 requestOrdering = requestOrdering[:len(requestOrdering)-1]
 
@@ -257,13 +264,13 @@ func (s *BlockSourceBase) loop() {
                     lowestRequest := requestOrdering[len(requestOrdering)-1]
 
                     if lowestRequest == lowestResponse.StartBlock {
-                        pendingResponse.setResponse(&lowestResponse)
+                        pendingResponse.SetResponse(&lowestResponse)
                     }
                 }
             }
 
-            case pendingErrors.sendIfSet() <- pendingErrors.Err(): {
-                pendingErrors.clear()
+            case pendingErrors.SendIfSet() <- pendingErrors.Err(): {
+                pendingErrors.Clear()
             }
 
             case <-s.exitChannel: {

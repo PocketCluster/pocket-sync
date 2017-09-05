@@ -9,7 +9,7 @@ import (
 )
 
 /*
- * BlockSource is an interface used by the patchers to obtain blocks from the reference
+ * BlockSource is an interface used by the patchers to obtain blocks from the reference.
  * It does not stipulate where the reference data might be (it could be local, in a pre-built patch file, on S3 or
  * somewhere else)
  *
@@ -53,6 +53,6 @@ type MissingBlockSpan struct {
 }
 
 type BlockReponse struct {
-    StartBlock  uint
-    Data        []byte
+    StartBlock      uint
+    Data           []byte
 }

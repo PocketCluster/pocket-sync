@@ -6,8 +6,9 @@ package chunks
 
 import (
     "bytes"
-    "errors"
     "io"
+
+    "github.com/pkg/errors"
 )
 
 /*
@@ -16,7 +17,7 @@ import (
  * when comparing unless the weak checksum matches
  */
 type ChunkChecksum struct {
-    // an offset in terms of chunk count
+    // an offset in terms of chunk count (2017/08/30 : This is in fact block id)
     ChunkOffset    uint
     // the size of the block
     Size           int64
@@ -34,7 +35,9 @@ func (chunk ChunkChecksum) Match(other ChunkChecksum) bool {
     return weakEqual && strongEqual
 }
 
-var ErrPartialChecksum = errors.New("Reader length was not a multiple of the checksums")
+var (
+    ErrPartialChecksum = errors.New("Reader length was not a multiple of the checksums")
+)
 
 // Loads chunks from a reader, assuming alternating weak then strong hashes
 func LoadChecksumsFromReader(
@@ -76,6 +79,50 @@ func LoadChecksumsFromReader(
         }
 
         offset += 1
+    }
+
+    return result, nil
+}
+
+// Loads chunks from a reader, assuming alternating weak then strong hashes
+func SizedLoadChecksumsFromReader(
+    reader         io.Reader,
+    chksumSize     uint,
+    weakHashSize   int,
+    strongHashSize int,
+) ([]ChunkChecksum, error) {
+
+    var (
+        result = make([]ChunkChecksum, 0, 20)
+        temp   = ChunkChecksum{}
+    )
+
+    for offset := uint(0); offset < chksumSize; offset++ {
+        weakBuffer := make([]byte, weakHashSize)
+        n, err := io.ReadFull(reader, weakBuffer)
+
+        if n == weakHashSize {
+            temp.ChunkOffset = offset
+            temp.WeakChecksum = weakBuffer
+        } else if n == 0 && err == io.EOF {
+            return nil, errors.Errorf("unexpected end of checksum sequence")
+        } else {
+            return nil, ErrPartialChecksum
+        }
+
+        strongBuffer := make([]byte, strongHashSize)
+        n, err = io.ReadFull(reader, strongBuffer)
+
+        if n == strongHashSize {
+            temp.StrongChecksum = strongBuffer
+            result = append(result, temp)
+
+            if err == io.EOF {
+                return nil, errors.Errorf("unexpected end of checksum sequence")
+            }
+        } else {
+            return nil, ErrPartialChecksum
+        }
     }
 
     return result, nil

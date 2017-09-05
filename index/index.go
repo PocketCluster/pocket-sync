@@ -26,14 +26,18 @@ import (
     "bytes"
     "encoding/binary"
     "sort"
-    
+
+    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/chunks"
+    "github.com/Redundancy/go-sync/merkle"
+    "github.com/Redundancy/go-sync/patcher"
 )
 
 const (
     // (2017/08/26) weakChecksumLookup map will have 256 elements with assumption that
     // each transmission block size would be ~ 10MB and the total size would be less than 2.5GB
     indexOffsetFilter uint64 = 0xFF
+    indexLookupMapSize int = 256
 )
 
 /*
@@ -43,7 +47,8 @@ const (
  * We use a 256 element slice, and the value of the least significant byte to determine which map to look up into.
  */
 type ChecksumIndex struct {
-    weakChecksumLookup     []map[uint64]StrongChecksumList
+    weakChecksumLookup     []map[uint64]chunks.StrongChecksumList
+    checkSumSequence       chunks.SequentialChecksumList
     AverageStrongLength    float64
     BlockCount             int
     MaxStrongLength        int
@@ -53,28 +58,41 @@ type ChecksumIndex struct {
 // Builds an index in which chunks can be found, with their corresponding offsets
 // We use this for the
 func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
-    n := &ChecksumIndex{
-        BlockCount:         len(checksums),
-        weakChecksumLookup: make([]map[uint64]StrongChecksumList, 256),
+    // for an empty checksums, it's not necessary to create anything
+    if checksums == nil || len(checksums) == 0 {
+        return nil
     }
 
+    var (
+        n = &ChecksumIndex{
+            BlockCount:         len(checksums),
+            weakChecksumLookup: make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize),
+            checkSumSequence:   nil,
+        }
+        sum = 0
+        count = 0
+    )
+
+    // copy/ append/ sort the checksum slice
+    chksumCopy := make(chunks.SequentialChecksumList, len(checksums))
+    copy(chksumCopy, checksums)
+    sort.Sort(chksumCopy)
+    n.checkSumSequence = chksumCopy
+
+    // create weak checksum map
     for _, chunk := range checksums {
         weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
         arrayOffset := weakChecksumAsInt & indexOffsetFilter
 
         if n.weakChecksumLookup[arrayOffset] == nil {
-            n.weakChecksumLookup[arrayOffset] = make(map[uint64]StrongChecksumList)
+            n.weakChecksumLookup[arrayOffset] = make(map[uint64]chunks.StrongChecksumList)
         }
 
         n.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
             n.weakChecksumLookup[arrayOffset][weakChecksumAsInt],
             chunk,
         )
-
     }
-
-    sum := 0
-    count := 0
 
     for _, a := range n.weakChecksumLookup {
         for _, c := range a {
@@ -93,11 +111,70 @@ func MakeChecksumIndex(checksums []chunks.ChunkChecksum) *ChecksumIndex {
     return n
 }
 
+func NewChecksumIndex() *ChecksumIndex {
+    return  &ChecksumIndex{
+        weakChecksumLookup: make([]map[uint64]chunks.StrongChecksumList, indexLookupMapSize),
+        checkSumSequence:   make(chunks.SequentialChecksumList, 0, 1),
+    }
+}
+
+func (index *ChecksumIndex) AppendChecksums(checksums []chunks.ChunkChecksum) error {
+    if checksums == nil || len(checksums) == 0 {
+        return errors.Errorf("unable to append an empty checksum slice")
+    }
+
+    var (
+        sum = 0
+        count = 0
+    )
+
+    // copy/ append/ sort the checksum slice
+    chksumCopy := make(chunks.SequentialChecksumList, len(checksums))
+    copy(chksumCopy, checksums)
+    index.checkSumSequence = append(index.checkSumSequence, chksumCopy...)
+    sort.Sort(index.checkSumSequence)
+
+    // create weak checksum map
+    for _, chunk := range checksums {
+        weakChecksumAsInt := binary.LittleEndian.Uint64(chunk.WeakChecksum)
+        arrayOffset := weakChecksumAsInt & indexOffsetFilter
+
+        if index.weakChecksumLookup[arrayOffset] == nil {
+            index.weakChecksumLookup[arrayOffset] = make(map[uint64]chunks.StrongChecksumList)
+        }
+
+        index.weakChecksumLookup[arrayOffset][weakChecksumAsInt] = append(
+            index.weakChecksumLookup[arrayOffset][weakChecksumAsInt],
+            chunk,
+        )
+    }
+
+    for _, a := range index.weakChecksumLookup {
+        for _, c := range a {
+            sort.Sort(c)
+            if len(c) > index.MaxStrongLength {
+                index.MaxStrongLength = len(c)
+            }
+            sum += len(c)
+            count += 1
+            index.Count += len(c)
+        }
+    }
+
+    index.AverageStrongLength = float64(sum) / float64(count)
+    index.BlockCount += len(checksums)
+    return nil
+}
+
+func (index *ChecksumIndex) SequentialChecksumList() chunks.SequentialChecksumList {
+    return index.checkSumSequence
+}
+
 func (index *ChecksumIndex) WeakCount() int {
     return index.Count
 }
 
-func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) StrongChecksumList {
+func (index *ChecksumIndex) FindWeakChecksumInIndex(weak []byte) chunks.StrongChecksumList {
     x := binary.LittleEndian.Uint64(weak)
     if index.weakChecksumLookup[x & indexOffsetFilter] != nil {
         if v, ok := index.weakChecksumLookup[x & indexOffsetFilter][x]; ok {
@@ -118,69 +195,43 @@ func (index *ChecksumIndex) FindWeakChecksum2(chk []byte) interface{} {
 }
 
 func (index *ChecksumIndex) FindStrongChecksum2(chk []byte, weak interface{}) []chunks.ChunkChecksum {
-    if strongList, ok := weak.(StrongChecksumList); ok {
+    if strongList, ok := weak.(chunks.StrongChecksumList); ok {
         return strongList.FindStrongChecksum(chk)
     } else {
         return nil
     }
 }
 
-type StrongChecksumList []chunks.ChunkChecksum
-
-// Sortable interface
-func (s StrongChecksumList) Len() int {
-    return len(s)
+// ------------------------------ SequentialChecksumSupervisor interface -----------------------------------------------
+func (index *ChecksumIndex) EndBlockID() uint {
+    return index.checkSumSequence[len(index.checkSumSequence) - 1].ChunkOffset
 }
 
-// Sortable interface
-func (s StrongChecksumList) Swap(i, j int) {
-    s[i], s[j] = s[j], s[i]
-}
-
-// Sortable interface
-func (s StrongChecksumList) Less(i, j int) bool {
-    return bytes.Compare(s[i].StrongChecksum, s[j].StrongChecksum) == -1
-}
-
-func (s StrongChecksumList) FindStrongChecksum(strong []byte) (result []chunks.ChunkChecksum) {
-    n := len(s)
-
-    // average length is 1, so fast path comparison
-    if n == 1 {
-        if bytes.Compare(s[0].StrongChecksum, strong) == 0 {
-            return s
-        } else {
-            return nil
+func (index *ChecksumIndex) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
+    for _, c := range index.checkSumSequence {
+        if c.ChunkOffset == blockID {
+            return patcher.MissingBlockSpan{
+                BlockSize:     c.Size,
+                StartBlock:    c.ChunkOffset,
+                EndBlock:      c.ChunkOffset,
+            }, nil
         }
     }
 
-    // find the first possible occurance
-    first_gte_checksum := sort.Search(
-        n,
-        func(i int) bool {
-            return bytes.Compare(s[i].StrongChecksum, strong) >= 0
-        },
-    )
+    return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
+}
 
-    // out of bounds
-    if first_gte_checksum == -1 || first_gte_checksum == n {
-        return nil
+func (index *ChecksumIndex) VerifyRootHash(hashes [][]byte) error {
+    hToCheck, err := merkle.SimpleHashFromHashes(hashes)
+    if err != nil {
+        return err
     }
-
-    // Somewhere in the middle, but the next one didn't match
-    if bytes.Compare(s[first_gte_checksum].StrongChecksum, strong) != 0 {
-        return nil
+    hAsRefer, err := index.checkSumSequence.RootHash()
+    if err != nil {
+        return err
     }
-
-    end := first_gte_checksum + 1
-    for end < n {
-        if bytes.Compare(s[end].StrongChecksum, strong) == 0 {
-            end += 1
-        } else {
-            break
-        }
-
+    if bytes.Compare(hToCheck, hAsRefer) != 0 {
+        return errors.Errorf("[ERR] calculated root hash different from referenece")
     }
-
-    return s[first_gte_checksum:end]
+    return nil
 }

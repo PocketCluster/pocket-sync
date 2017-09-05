@@ -28,6 +28,10 @@ func NewReadSeekerBlockSource(
     )
 }
 
+func NewReadSeekerRequester(rs ReadSeeker) *ReadSeekerRequester {
+    return &ReadSeekerRequester{rs:rs}
+}
+
 type ReadSeekerRequester struct {
     rs ReadSeeker
 }

@@ -1,6 +1,8 @@
 package index
 
 import (
+    "encoding/binary"
+    "reflect"
     "testing"
 
     "github.com/Redundancy/go-sync/chunks"
@@ -202,5 +204,103 @@ func TestFindTwoDuplicatedBlocksInIndex(t *testing.T) {
     second := strongs[1]
     if second.ChunkOffset != 2 {
         t.Errorf("Wrong chunk found, had offset %v", second.ChunkOffset)
+    }
+}
+
+func TestSequentialBlocksInIndex(t *testing.T) {
+    var (
+        strong_checksums = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        checksums        = []chunks.ChunkChecksum{}
+    )
+    for i := len(strong_checksums) - 1; 0 <= i; i-- {
+        weakSum := make([]byte, 8, 8)
+        binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+        checksums = append(
+            checksums,
+            chunks.ChunkChecksum{
+                ChunkOffset:    uint(i),
+                WeakChecksum:   weakSum,
+                StrongChecksum: []byte{strong_checksums[i]},
+            })
+    }
+    ci := MakeChecksumIndex(checksums)
+
+    // check weak checksum map
+    for i := 0; i < len(strong_checksums); i++ {
+        weakSum := make([]byte, 8, 8)
+        binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+        result := ci.FindWeakChecksumInIndex(weakSum)
+        strongs := result.FindStrongChecksum([]byte{strong_checksums[i]})
+
+        if len(strongs) != 1 {
+            t.Fatalf("Incorrect number of strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(strongs[0].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if ci.SequentialChecksumList()[i].ChunkOffset != uint(i) {
+            t.Fatalf("Incorrect checksums index found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].WeakChecksum, weakSum) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+    }
+}
+
+func TestPartialSequentialBlocksInIndex(t *testing.T) {
+    var (
+        ci = NewChecksumIndex()
+        strong_checksums = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        appendChecksums = func(csindex *ChecksumIndex, start, end int) {
+            checksums := []chunks.ChunkChecksum{}
+            for i := end; start <= i; i-- {
+                weakSum := make([]byte, 8, 8)
+                binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+                checksums = append(
+                    checksums,
+                    chunks.ChunkChecksum{
+                        ChunkOffset:    uint(i),
+                        WeakChecksum:   weakSum,
+                        StrongChecksum: []byte{strong_checksums[i]},
+                    })
+            }
+            csindex.AppendChecksums(checksums)
+        }
+    )
+    appendChecksums(ci, 0, 4)
+    appendChecksums(ci, 5, 9)
+    appendChecksums(ci, 10, 14)
+    appendChecksums(ci, 15, 19)
+    appendChecksums(ci, 20, len(strong_checksums) - 1)
+
+    // check weak checksum map
+    for i := 0; i < len(strong_checksums); i++ {
+        weakSum := make([]byte, 8, 8)
+        binary.LittleEndian.PutUint64(weakSum, uint64(i))
+
+        result := ci.FindWeakChecksumInIndex(weakSum)
+        strongs := result.FindStrongChecksum([]byte{strong_checksums[i]})
+
+        if len(strongs) != 1 {
+            t.Fatalf("Incorrect number of strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(strongs[0].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if ci.SequentialChecksumList()[i].ChunkOffset != uint(i) {
+            t.Fatalf("Incorrect checksums index found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].WeakChecksum, weakSum) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
+        if !reflect.DeepEqual(ci.SequentialChecksumList()[i].StrongChecksum, []byte{strong_checksums[i]}) {
+            t.Fatalf("Incorrect strong checksums found: %v", strongs)
+        }
     }
 }

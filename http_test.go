@@ -10,7 +10,6 @@ import (
     "github.com/Redundancy/go-sync/blocksources"
     "github.com/Redundancy/go-sync/comparer"
     "github.com/Redundancy/go-sync/filechecksum"
-    "github.com/Redundancy/go-sync/indexbuilder"
     "github.com/Redundancy/go-sync/patcher"
 )
 
@@ -68,7 +67,7 @@ func Example_httpBlockSource() {
     LOCAL_URL := fmt.Sprintf("http://localhost:%v/content", PORT)
 
     generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
-    _, referenceFileIndex, checksumLookup, err := indexbuilder.BuildIndexFromString(generator, REFERENCE)
+    _, referenceFileIndex, checksumLookup, err := filechecksum.BuildIndexFromString(generator, REFERENCE)
 
     if err != nil {
         return
@@ -91,15 +90,15 @@ func Example_httpBlockSource() {
         FileSize:       fileSize,
     }
 
-    /*
-        // Normally, this would be:
-        rsync, err := MakeRSync(
-            "toPatch.file",
-            "http://localhost/content",
-            "out.file",
-            fs,
-        )
-    */
+/*
+    // Normally, this would be:
+    rsync, err := MakeRSync(
+        "toPatch.file",
+        "http://localhost/content",
+        "out.file",
+        fs,
+    )
+*/
     // Need to replace the output and the input
     inputFile := bytes.NewReader([]byte(LOCAL_VERSION))
     patchedFile := bytes.NewBuffer(nil)
