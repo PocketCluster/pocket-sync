@@ -102,9 +102,12 @@ func Test_BuildSeqRootChecksums_ExpectedLength(t *testing.T) {
                          (BLOCK_COUNT * checksum.GetWeakRollingHash().Size())
     )
 
-    _, err := checksum.BuildSequentialAndRootChecksum(emptybuffer, output)
+    _, count, err := checksum.BuildSequentialAndRootChecksum(emptybuffer, output)
     if err != nil {
         t.Fatal(err)
+    }
+    if count != BLOCK_COUNT {
+        t.Fatalf("invalid sequential checksum size. acquired %v vs expecetd %v", count, BLOCK_COUNT)
     }
 
     if output.Len() != expectedLength {
@@ -132,9 +135,12 @@ func Test_BuildSeqRootChecksums_ExpectedLengthWithPartialBlockAtEnd(t *testing.T
                          (BLOCK_COUNT * checksum.GetWeakRollingHash().Size())
     )
 
-    _, err := checksum.BuildSequentialAndRootChecksum(emptybuffer, output)
+    _, count, err := checksum.BuildSequentialAndRootChecksum(emptybuffer, output)
     if err != nil {
         t.Fatal(err)
+    }
+    if count != BLOCK_COUNT {
+        t.Fatalf("invalid sequential checksum size. acquired %v vs expecetd %v", count, BLOCK_COUNT)
     }
 
     if output.Len() != expectedLength {
@@ -157,12 +163,15 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
         output = bytes.NewBuffer(nil)
     )
 
-    rcs, err := checksum.BuildSequentialAndRootChecksum(
+    orcs, count, err := checksum.BuildSequentialAndRootChecksum(
         readers.OneReader(BLOCKSIZE*BLOCK_COUNT),
         output,
     )
     if err != nil {
         t.Fatal(err)
+    }
+    if count != BLOCK_COUNT {
+        t.Fatalf("invalid sequential checksum size. acquired %v vs expecetd %v", count, BLOCK_COUNT)
     }
 
     weakSize, strongSize := checksum.GetChecksumSizes()
@@ -175,7 +184,7 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
         )
     }
 
-    results, err := chunks.LoadChecksumsFromReader(output, weakSize, strongSize)
+    results, err := chunks.SizedLoadChecksumsFromReader(output, uint(BLOCK_COUNT), weakSize, strongSize)
     if err != nil {
         t.Fatal(err)
     }
@@ -184,12 +193,11 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
     }
 
     // Make an index that we can use against our local checksums
-    i := index.MakeChecksumIndex(results)
-    lrcs, err := i.SequentialChecksumList().RootHash()
+    ircs, err := index.MakeChecksumIndex(results).SequentialChecksumList().RootHash()
     if err != nil {
         t.Fatal(err)
     }
-    if bytes.Compare(lrcs, rcs) != 0 {
+    if bytes.Compare(ircs, orcs) != 0 {
         t.Errorf("loaded root checksum is different from generated checksum")
     }
 
@@ -227,18 +235,18 @@ func Test_BuildSeqRootChecksums_PrependedBlocks(t *testing.T) {
     )
 
     output1 := bytes.NewBuffer(nil)
-    chksum1, _ := checksum.BuildSequentialAndRootChecksum(file1, output1)
+    chksum1, _, _ := checksum.BuildSequentialAndRootChecksum(file1, output1)
 
     output2 := bytes.NewBuffer(nil)
-    chksum2, _ := checksum.BuildSequentialAndRootChecksum(file2, output2)
+    chksum2, _, _ := checksum.BuildSequentialAndRootChecksum(file2, output2)
 
     if bytes.Compare(chksum1, chksum2) == 0 {
         t.Fatal("Checksums should be different")
     }
 
     weaksize, strongSize := checksum.GetChecksumSizes()
-    sums1, _ := chunks.LoadChecksumsFromReader(output1, weaksize, strongSize)
-    sums2, _ := chunks.LoadChecksumsFromReader(output2, weaksize, strongSize)
+    sums1, _ := chunks.SizedLoadChecksumsFromReader(output1, uint(BLOCK_COUNT), weaksize, strongSize)
+    sums2, _ := chunks.SizedLoadChecksumsFromReader(output2, uint(BLOCK_COUNT), weaksize, strongSize)
 
     if len(sums1) != len(sums2) {
         t.Fatalf("Checksum lengths differ %v vs %v", len(sums1), len(sums2))

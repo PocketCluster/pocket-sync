@@ -3,16 +3,17 @@ package filechecksum
 import (
     "io"
 
+    "github.com/pkg/errors"
     "github.com/Redundancy/go-sync/chunks"
     "github.com/Redundancy/go-sync/merkle"
 )
 
-func (check *FileChecksumGenerator) BuildSequentialAndRootChecksum(inputFile io.Reader, output io.Writer) ([]byte, error) {
+func (check *FileChecksumGenerator) BuildSequentialAndRootChecksum(inputFile io.Reader, output io.Writer) ([]byte, uint32, error) {
     for chunkResult := range check.startBuildChecksum(inputFile, 64) {
         if chunkResult.Err != nil {
-            return nil, chunkResult.Err
+            return nil, 0, chunkResult.Err
         } else if chunkResult.Filechecksum != nil {
-            return chunkResult.Filechecksum, nil
+            return chunkResult.Filechecksum, chunkResult.SequenceSize, nil
         }
 
         for _, chunk := range chunkResult.Checksums {
@@ -21,7 +22,7 @@ func (check *FileChecksumGenerator) BuildSequentialAndRootChecksum(inputFile io.
         }
     }
 
-    return nil, nil
+    return nil, 0, errors.Errorf("sequential checksum building reached an unexpected end")
 }
 
 func (check *FileChecksumGenerator) startBuildChecksum(
@@ -53,7 +54,7 @@ func (check *FileChecksumGenerator) buildSeqAndRootChecksum(
         strongHash  = check.GetStrongHash()
     )
 
-    i := uint(0)
+    blockID := uint(0)
     for {
         n, err := io.ReadFull(inputFile, buffer)
         // loop only breaks when there is nothing read (so partial reads gets handled)
@@ -80,7 +81,7 @@ func (check *FileChecksumGenerator) buildSeqAndRootChecksum(
         results = append(
             results,
             chunks.ChunkChecksum{
-                ChunkOffset:    i,
+                ChunkOffset:    blockID,
                 Size:           blockSize,
                 WeakChecksum:   weakChecksumValue,
                 StrongChecksum: strongChecksumValue,
@@ -98,7 +99,7 @@ func (check *FileChecksumGenerator) buildSeqAndRootChecksum(
         }
 
         // advance iterator
-        i++
+        blockID++
 
         // Reset the strong (we don't reset rollingsum as it needs previous data)
         strongHash.Reset()
@@ -125,6 +126,8 @@ func (check *FileChecksumGenerator) buildSeqAndRootChecksum(
     } else {
         resultChan <- ChecksumResults{
             Filechecksum: rcs,
+            // blockID has increased by one at the end of loop.
+            SequenceSize: uint32(blockID),
         }
     }
 

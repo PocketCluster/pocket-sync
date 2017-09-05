@@ -122,6 +122,8 @@ type ChecksumResults struct {
     Checksums []chunks.ChunkChecksum
     // only used for the last item
     Filechecksum []byte
+    // checksum sequence size
+    SequenceSize uint32
     // signals that this is the last item
     Err error
 }
