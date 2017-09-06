@@ -7,7 +7,7 @@ import (
 
 type SingleBlockSource []byte
 
-func (d SingleBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
+func (d SingleBlockSource) GetStrongChecksumForBlock(blockID uint) []byte {
     m := ripemd160.New()
     m.Write(d)
     return m.Sum(nil)
@@ -29,14 +29,14 @@ func TestBlockEqualsItself(t *testing.T) {
 
 type FourByteBlockSource []byte
 
-func (d FourByteBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
+func (d FourByteBlockSource) GetStrongChecksumForBlock(blockID uint) []byte {
     m := ripemd160.New()
 
     start := blockID * 4
     end := start + 4
 
-    if end >= len(d) {
-        end = len(d)
+    if end >= uint(len(d)) {
+        end = uint(len(d))
     }
 
     m.Write(d[start:end])

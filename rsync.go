@@ -58,7 +58,7 @@ type FileSummary interface {
     GetFileSize() int64
     FindWeakChecksum2(bytes []byte) interface{}
     FindStrongChecksum2(bytes []byte, weak interface{}) []chunks.ChunkChecksum
-    GetStrongChecksumForBlock(blockID int) []byte
+    GetStrongChecksumForBlock(blockID uint) []byte
 }
 
 // BasicSummary implements a version of the FileSummary interface
