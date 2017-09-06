@@ -41,6 +41,9 @@ func NewMultiSourcePatcher(
         repositories:  rMap,
         blockRef:      blockRef,
 
+        waiter:        &sync.WaitGroup{},
+        exitC:         make(chan struct{}),
+
         repoWaiter:    &sync.WaitGroup{},
         repoExitC:     make(chan bool),
         repoErrorC:    make(chan *patcher.RepositoryError),
@@ -53,6 +56,9 @@ type MultiSourcePatcher struct {
     repositories     map[uint]patcher.BlockRepository
     blockRef         patcher.SeqChecksumReference
 
+    waiter           *sync.WaitGroup
+    exitC            chan struct{}
+
     // repository handling
     repoWaiter       *sync.WaitGroup
     repoExitC        chan bool
@@ -60,9 +66,15 @@ type MultiSourcePatcher struct {
     repoResponseC    chan patcher.RepositoryResponse
 }
 
-func (m *MultiSourcePatcher) closeRepositories() error {
+func (m *MultiSourcePatcher) Close() error {
     close(m.repoExitC)
     m.repoWaiter.Wait()
+
+    // at this point all blkrepo exit
+    close(m.exitC)
+    m.waiter.Wait()
+
+    // now close all other channels
     close(m.repoErrorC)
     close(m.repoResponseC)
     return nil
@@ -85,6 +97,9 @@ func (m *MultiSourcePatcher) Patch() error {
         responseOrdering    = make(patcher.StackedReponse,    0, poolSize)
         retryRequests       = make(patcher.QueuedRequestList, 0, poolSize)
     )
+    // this is for Patch() itself
+    m.waiter.Add(1)
+    defer m.waiter.Done()
 
     // launch repository pool
     for _, r := range m.repositories {
@@ -188,6 +203,10 @@ func (m *MultiSourcePatcher) Patch() error {
         }
 
         select {
+            case <- m.exitC:
+                // TODO : this is interruption. test error conditions & make sure all channels closed properly
+                return nil
+
             // at this point, the erronous repository will not be added back to available pool and removed from pool
             case err := <- m.repoErrorC: {
                 log.Errorf("repository #%v reports error %v", err.RepositoryID(), err.Error())

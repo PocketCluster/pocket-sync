@@ -10,6 +10,20 @@ type UniformSizeBlockResolver struct {
     MaxDesiredRequestSize int64
 }
 
+//-----------------------------------------------------------------------------
+func MakeNullUniformSizeResolver(blockSize int64) *UniformSizeBlockResolver {
+    return &UniformSizeBlockResolver{
+        BlockSize: blockSize,
+    }
+}
+
+func MakeKnownFileSizedBlockResolver(blockSize int64, filesize int64) *UniformSizeBlockResolver {
+    return &UniformSizeBlockResolver{
+        BlockSize: blockSize,
+        FileSize:  filesize,
+    }
+}
+
 func (r *UniformSizeBlockResolver) GetBlockStartOffset(blockID uint) int64 {
     if off := int64(int64(blockID) * r.BlockSize); r.FileSize != 0 && off > r.FileSize {
         return r.FileSize
