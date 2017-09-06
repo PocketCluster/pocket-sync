@@ -2,10 +2,11 @@ package blocksources
 
 import (
     "bytes"
-    "errors"
     "fmt"
     "net/http"
     "strings"
+
+    "github.com/pkg/errors"
 )
 
 const (
@@ -22,7 +23,7 @@ var ClientNoCompression = &http.Client{
 }
 
 func NewHttpBlockSource(
-    url string,
+    url      string,
     concurrentRequests int,
     resolver BlockSourceOffsetResolver,
     verifier BlockVerifier,
@@ -53,11 +54,10 @@ type HttpRequester struct {
     url    string
 }
 
-func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []byte, err error) {
+func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) ([]byte, error) {
     rangedRequest, err := http.NewRequest("GET", r.url, nil)
-
     if err != nil {
-        return nil, fmt.Errorf("Error creating request for \"%v\": %v", r.url, err)
+        return nil, errors.Errorf("Error creating request for \"%v\": %v", r.url, err)
     }
 
     rangeSpecifier := fmt.Sprintf("bytes=%v-%v", startOffset, endOffset-1)
@@ -65,11 +65,9 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []by
     rangedRequest.Header.Add("Range", rangeSpecifier)
     rangedRequest.Header.Add("Accept-Encoding", "identity")
     rangedResponse, err := r.client.Do(rangedRequest)
-
     if err != nil {
-        return nil, fmt.Errorf("Error executing request for \"%v\": %v", r.url, err)
+        return nil, errors.Errorf("Error executing request for \"%v\": %v", r.url, err)
     }
-
     defer rangedResponse.Body.Close()
 
     if rangedResponse.StatusCode == 404 {
@@ -82,28 +80,18 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) (data []by
         return nil, ResponseFromServerWasGZiped
 
     } else {
-        buf := bytes.NewBuffer(make([]byte, 0, endOffset-startOffset))
+        buf := bytes.NewBuffer(make([]byte, 0, endOffset - startOffset))
         _, err = buf.ReadFrom(rangedResponse.Body)
-
         if err != nil {
-            err = fmt.Errorf(
-                "Failed to read response body for %v (%v-%v): %v",
-                r.url,
-                startOffset, endOffset-1,
-                err)
+            return nil, errors.Errorf("Failed to read response body for %v (%v-%v): %v",
+                r.url, startOffset, endOffset-1, err)
+        }
+        if int64(buf.Len()) != endOffset - startOffset {
+            return nil, errors.Errorf("Unexpected response length %v (%v): %v",
+                r.url, endOffset-startOffset+1, buf.Len())
         }
 
-        data = buf.Bytes()
-
-        if int64(len(data)) != endOffset-startOffset {
-            err = fmt.Errorf(
-                "Unexpected response length %v (%v): %v",
-                r.url,
-                endOffset-startOffset+1,
-                len(data))
-        }
-
-        return
+        return buf.Bytes(), nil
     }
 }
 
