@@ -7,6 +7,7 @@ import (
     "strings"
 
     "github.com/pkg/errors"
+    "time"
 )
 
 const (
@@ -18,8 +19,14 @@ var (
     ResponseFromServerWasGZiped = errors.New("HTTP response was gzip encoded. Ranges may not match those requested.")
 )
 
-var ClientNoCompression = &http.Client{
-    Transport: &http.Transport{},
+func NewRequesterWithTimeout(url string, timeout time.Duration) *HttpRequester {
+    return &HttpRequester{
+        client: &http.Client{
+            Timeout:    timeout,
+            Transport:  &http.Transport{},
+        },
+        url: url,
+    }
 }
 
 func NewHttpBlockSource(
