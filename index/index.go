@@ -274,6 +274,9 @@ func (n *ChecksumIndex) MissingBlockSpanForID(blockID uint) (patcher.MissingBloc
 }
 
 func (n *ChecksumIndex) VerifyRootHash(hashes [][]byte) error {
+    if len(hashes) != n.checkSumSequence.Len() {
+        return errors.Errorf("[ERR] mismatching hashes length")
+    }
     hToCheck, err := merkle.SimpleHashFromHashes(hashes)
     if err != nil {
         return err
