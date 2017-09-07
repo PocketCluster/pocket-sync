@@ -195,7 +195,7 @@ func Test_SingleSource_Basic_Patching(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    src.closeRepositories()
+    src.Close()
 
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
@@ -256,7 +256,7 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    src.closeRepositories()
+    src.Close()
 
     if result, err := ioutil.ReadAll(out); err == nil {
         t.Logf("String split is: \"%v\"", strings.Join(REFERENCE_BLOCKS, "\", \""))
@@ -358,7 +358,7 @@ func Test_MultiRandom_Source_Patching(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    src.closeRepositories()
+    src.Close()
     close(countC)
     waiter.Wait()
 
@@ -515,7 +515,7 @@ func Test_Multi_OutOfOrder_Source_Patching(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    src.closeRepositories()
+    src.Close()
     close(countC)
     waiter.Wait()
 
@@ -627,7 +627,7 @@ func Test_Single_Repository_Failure(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    src.closeRepositories()
+    src.Close()
     close(countC)
     waiter.Wait()
 
@@ -755,7 +755,7 @@ func Test_All_Repositories_Failure(t *testing.T) {
         t.Log(err.Error())
     }
 
-    src.closeRepositories()
+    src.Close()
     close(countC)
     waiter.Wait()
 
@@ -800,5 +800,5 @@ func Test_RootChecksum_Failure(t *testing.T) {
     } else {
         t.Log(err.Error())
     }
-    src.closeRepositories()
+    src.Close()
 }

@@ -67,7 +67,7 @@ func Example_httpBlockSource() {
     LOCAL_URL := fmt.Sprintf("http://localhost:%v/content", PORT)
 
     generator := filechecksum.NewFileChecksumGenerator(BLOCK_SIZE)
-    _, referenceFileIndex, checksumLookup, err := filechecksum.BuildIndexFromString(generator, REFERENCE)
+    _, referenceFileIndex, _, err := filechecksum.BuildIndexFromString(generator, REFERENCE)
 
     if err != nil {
         return
@@ -84,7 +84,6 @@ func Example_httpBlockSource() {
 
     fs := &BasicSummary{
         ChecksumIndex:  referenceFileIndex,
-        ChecksumLookup: checksumLookup,
         BlockCount:     uint(blockCount),
         BlockSize:      uint(BLOCK_SIZE),
         FileSize:       fileSize,

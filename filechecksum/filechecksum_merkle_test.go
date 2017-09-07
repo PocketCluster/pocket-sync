@@ -184,7 +184,7 @@ func Test_BuildSeqRootChecksums_BlocksTheSame(t *testing.T) {
         )
     }
 
-    results, err := chunks.SizedLoadChecksumsFromReader(output, uint(BLOCK_COUNT), weakSize, strongSize)
+    results, err := chunks.CountedLoadChecksumsFromReader(output, uint(BLOCK_COUNT), weakSize, strongSize)
     if err != nil {
         t.Fatal(err)
     }
@@ -245,8 +245,8 @@ func Test_BuildSeqRootChecksums_PrependedBlocks(t *testing.T) {
     }
 
     weaksize, strongSize := checksum.GetChecksumSizes()
-    sums1, _ := chunks.SizedLoadChecksumsFromReader(output1, uint(BLOCK_COUNT), weaksize, strongSize)
-    sums2, _ := chunks.SizedLoadChecksumsFromReader(output2, uint(BLOCK_COUNT), weaksize, strongSize)
+    sums1, _ := chunks.CountedLoadChecksumsFromReader(output1, uint(BLOCK_COUNT), weaksize, strongSize)
+    sums2, _ := chunks.CountedLoadChecksumsFromReader(output2, uint(BLOCK_COUNT), weaksize, strongSize)
 
     if len(sums1) != len(sums2) {
         t.Fatalf("Checksum lengths differ %v vs %v", len(sums1), len(sums2))

@@ -182,9 +182,9 @@ func BenchmarkRollsum64(b *testing.B) {
     b.StopTimer()
 }
 
-func BenchmarkRollsum64_8096(b *testing.B) {
-    r := NewRollsum64(8096)
-    buffer := make([]byte, 8096)
+func BenchmarkRollsum64_8192(b *testing.B) {
+    r := NewRollsum64(8192)
+    buffer := make([]byte, 8192)
     b.ReportAllocs()
     b.SetBytes(int64(len(buffer)))
     checksum := make([]byte, 16)
@@ -198,9 +198,9 @@ func BenchmarkRollsum64_8096(b *testing.B) {
     b.StopTimer()
 }
 
-func BenchmarkRollsum64_16192(b *testing.B) {
-    r := NewRollsum64(16192)
-    buffer := make([]byte, 16192)
+func BenchmarkRollsum64_16384(b *testing.B) {
+    r := NewRollsum64(16384)
+    buffer := make([]byte, 16384)
     b.ReportAllocs()
     b.SetBytes(int64(len(buffer)))
     checksum := make([]byte, 32)
@@ -293,4 +293,15 @@ func BenchmarkIncrementalRollsum64WithC2(b *testing.B) {
 
     PASS
     ok  	github.com/Redundancy/go-sync/rollsum	21.894s
+
+    // 8096 -> 8192, 16192 -> 16384
+    OK: 10 passed
+    BenchmarkRollsum64-8                    	10000000	       232 ns/op	 429.69 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum64_8192-8               	  100000	     17747 ns/op	 461.57 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkRollsum64_16384-8              	   50000	     34784 ns/op	 471.02 MB/s	       1 B/op	       0 allocs/op
+    BenchmarkRollsum64Base-8                	10000000	       203 ns/op	 492.27 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum64-8         	50000000	        35.6 ns/op	  28.07 MB/s	       0 B/op	       0 allocs/op
+    BenchmarkIncrementalRollsum64WithC2-8   	50000000	        30.3 ns/op	  33.02 MB/s	       0 B/op	       0 allocs/op
+    PASS
+    ok  	github.com/Redundancy/go-sync/rollsum	12.210s
  */

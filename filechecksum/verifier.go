@@ -3,10 +3,12 @@ package filechecksum
 import (
     "bytes"
     "hash"
+
+    "github.com/pkg/errors"
 )
 
 type ChecksumLookup interface {
-    GetStrongChecksumForBlock(blockID int) []byte
+    GetStrongChecksumForBlock(blockID uint) []byte
 }
 
 type HashVerifier struct {
@@ -27,7 +29,7 @@ func (v *HashVerifier) VerifyBlockRange(startBlockID uint, data []byte) bool {
         blockData := data[start:end]
 
         expectedChecksum := v.BlockChecksumGetter.GetStrongChecksumForBlock(
-            int(startBlockID) + i,
+            startBlockID + uint(i),
         )
 
         if expectedChecksum == nil {
@@ -45,4 +47,20 @@ func (v *HashVerifier) VerifyBlockRange(startBlockID uint, data []byte) bool {
     }
 
     return true
+}
+
+func (v *HashVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, error) {
+    v.Hash.Reset()
+    v.Hash.Write(data)
+    calculatedChecksum := v.Hash.Sum(nil)
+
+    expectedChecksum := v.BlockChecksumGetter.GetStrongChecksumForBlock(startBlockID)
+    if expectedChecksum == nil {
+        return nil, errors.Errorf("[ERR] unable to verify checksum as expected checksum is empty")
+    }
+    if bytes.Compare(expectedChecksum, calculatedChecksum) != 0 {
+        return nil, errors.Errorf("[ERR] calculated checksum mismatches expected")
+    }
+
+    return calculatedChecksum, nil
 }

@@ -87,20 +87,6 @@ func (r PendingResponses) Less(i, j int) bool {
 }
 
 //-----------------------------------------------------------------------------
-func MakeNullUniformSizeResolver(blockSize int64) *UniformSizeBlockResolver {
-    return &UniformSizeBlockResolver{
-        BlockSize: blockSize,
-    }
-}
-
-func MakeKnownFileSizedBlockResolver(blockSize int64, filesize int64) *UniformSizeBlockResolver {
-    return &UniformSizeBlockResolver{
-        BlockSize: blockSize,
-        FileSize:  filesize,
-    }
-}
-
-//-----------------------------------------------------------------------------
 type FunctionChecksumVerifier func(startBlockID uint, data []byte) ([]byte, error)
 
 func (f FunctionChecksumVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, error) {

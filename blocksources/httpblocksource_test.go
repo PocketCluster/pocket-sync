@@ -215,7 +215,7 @@ func TestHttpBlockSourcePartialContentRequest(t *testing.T) {
 
 type SingleBlockSource []byte
 
-func (d SingleBlockSource) GetStrongChecksumForBlock(blockID int) []byte {
+func (d SingleBlockSource) GetStrongChecksumForBlock(blockID uint) []byte {
     m := filechecksum.DefaultStrongHashGenerator()
     return m.Sum(d)
 }

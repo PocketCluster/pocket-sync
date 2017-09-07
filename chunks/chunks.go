@@ -85,9 +85,9 @@ func LoadChecksumsFromReader(
 }
 
 // Loads chunks from a reader, assuming alternating weak then strong hashes
-func SizedLoadChecksumsFromReader(
+func CountedLoadChecksumsFromReader(
     reader         io.Reader,
-    chksumSize     uint,
+    blockCount     uint,
     weakHashSize   int,
     strongHashSize int,
 ) ([]ChunkChecksum, error) {
@@ -97,7 +97,7 @@ func SizedLoadChecksumsFromReader(
         temp   = ChunkChecksum{}
     )
 
-    for offset := uint(0); offset < chksumSize; offset++ {
+    for offset := uint(0); offset < blockCount; offset++ {
         weakBuffer := make([]byte, weakHashSize)
         n, err := io.ReadFull(reader, weakBuffer)
 
@@ -131,6 +131,6 @@ func SizedLoadChecksumsFromReader(
 // satisfies filechecksum.ChecksumLookup
 type StrongChecksumGetter []ChunkChecksum
 
-func (s StrongChecksumGetter) GetStrongChecksumForBlock(blockID int) []byte {
+func (s StrongChecksumGetter) GetStrongChecksumForBlock(blockID uint) []byte {
     return s[blockID].StrongChecksum
 }
