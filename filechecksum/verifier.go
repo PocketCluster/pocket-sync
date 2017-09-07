@@ -50,6 +50,7 @@ func (v *HashVerifier) VerifyBlockRange(startBlockID uint, data []byte) bool {
 }
 
 func (v *HashVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]byte, error) {
+    v.Hash.Reset()
     v.Hash.Write(data)
     calculatedChecksum := v.Hash.Sum(nil)
 
@@ -57,7 +58,7 @@ func (v *HashVerifier) BlockChecksumForRange(startBlockID uint, data []byte) ([]
     if expectedChecksum == nil {
         return nil, errors.Errorf("[ERR] unable to verify checksum as expected checksum is empty")
     }
-    if bytes.Compare(expectedChecksum, calculatedChecksum) == 0 {
+    if bytes.Compare(expectedChecksum, calculatedChecksum) != 0 {
         return nil, errors.Errorf("[ERR] calculated checksum mismatches expected")
     }
 
