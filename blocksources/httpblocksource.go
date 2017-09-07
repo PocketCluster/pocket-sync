@@ -19,13 +19,14 @@ var (
     ResponseFromServerWasGZiped = errors.New("HTTP response was gzip encoded. Ranges may not match those requested.")
 )
 
-func NewRequesterWithTimeout(url string, timeout time.Duration) *HttpRequester {
+func NewRequesterWithTimeout(url, uagent string, timeout time.Duration) *HttpRequester {
     return &HttpRequester{
         client: &http.Client{
             Timeout:    timeout,
             Transport:  &http.Transport{},
         },
-        url: url,
+        url:    url,
+        uagent: uagent,
     }
 }
 
@@ -59,6 +60,7 @@ func (url URLNotFoundError) Error() string {
 type HttpRequester struct {
     client *http.Client
     url    string
+    uagent string
 }
 
 func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) ([]byte, error) {
@@ -71,6 +73,9 @@ func (r *HttpRequester) DoRequest(startOffset int64, endOffset int64) ([]byte, e
     rangedRequest.ProtoAtLeast(1, 1)
     rangedRequest.Header.Add("Range", rangeSpecifier)
     rangedRequest.Header.Add("Accept-Encoding", "identity")
+    if len(r.uagent) != 0 {
+        rangedRequest.Header.Add("User-Agent", r.uagent)
+    }
     rangedResponse, err := r.client.Do(rangedRequest)
     if err != nil {
         return nil, errors.Errorf("Error executing request for \"%v\": %v", r.url, err)
