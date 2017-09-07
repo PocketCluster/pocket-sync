@@ -67,7 +67,6 @@ type BasicSummary struct {
     BlockCount uint
     FileSize   int64
     *index.ChecksumIndex
-    filechecksum.ChecksumLookup
 }
 
 // GetBlockSize gets the size of each block

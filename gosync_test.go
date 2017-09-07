@@ -47,7 +47,6 @@ func Example() {
     // "files" and sources. Normally you would use MakeRSync
     summary := &BasicSummary{
         ChecksumIndex:  referenceFileIndex,
-        ChecksumLookup: nil,
         BlockCount:     uint(blockCount),
         BlockSize:      blockSize,
         FileSize:       int64(len(referenceAsBytes)),
