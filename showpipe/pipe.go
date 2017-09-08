@@ -10,9 +10,9 @@ package showpipe
 import (
     "io"
     "sync"
+    "time"
 
     "github.com/pkg/errors"
-    "time"
 )
 
 // ErrClosedPipe is the error used for read or write operations on a closed pipe.
@@ -29,9 +29,10 @@ type pipe struct {
     rerr       error      // if reader closed, error to give writes
     werr       error      // if writer closed, error to give reads
 
-    totalSize  uint64
-    progress   uint64
+    reportC    chan float32
     lastUpdate time.Time
+    totalSize  uint64
+    accumlated uint64
 }
 
 func (p *pipe) read(b []byte) (n int, err error) {
@@ -194,5 +195,20 @@ func Pipe() (*PipeReader, *PipeWriter) {
     p.wwait.L = &p.l
     r := &PipeReader{p}
     w := &PipeWriter{p}
+    return r, w
+}
+
+func PipeWithSize(totalSize uint64, reportC chan float32) (*PipeReader, *PipeWriter) {
+    p := new(pipe)
+    p.rwait.L = &p.l
+    p.wwait.L = &p.l
+    r := &PipeReader{p}
+    w := &PipeWriter{p}
+
+    p.reportC    = reportC
+    p.lastUpdate = time.Time{}
+    p.totalSize  = totalSize
+    p.accumlated = 0
+
     return r, w
 }
