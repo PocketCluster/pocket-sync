@@ -45,12 +45,9 @@ type PipeProgress struct {
 }
 
 func reportProgress(p *pipe, transferred int) {
-    var (
-        done float32 = 0.0
-    )
     if p.reportC != nil {
         p.accumlated += uint64(transferred)
-        done = float32(float64(p.accumlated) / float64(p.totalSize))
+        var done = float32(float64(p.accumlated) / float64(p.totalSize))
 
         p.reportC <- PipeProgress{
             TotalSize:      p.totalSize,
@@ -155,6 +152,10 @@ func (p *pipe) rclose(err error) {
     p.l.Lock()
     defer p.l.Unlock()
     p.rerr = err
+    // need to close channel at this place
+    if p.reportC != nil {
+        close(p.reportC)
+    }
     p.rwait.Signal()
     p.wwait.Signal()
 }
@@ -245,18 +246,18 @@ func Pipe() (*PipeReader, *PipeWriter) {
     return r, w
 }
 
-func PipeWithSize(totalSize uint64, reportC chan PipeProgress) (*PipeReader, *PipeWriter) {
+func PipeWithReport(totalSize uint64) (*PipeReader, *PipeWriter, <- chan PipeProgress) {
     p := new(pipe)
     p.rwait.L = &p.l
     p.wwait.L = &p.l
     r := &PipeReader{p}
     w := &PipeWriter{p}
 
-    p.reportC    = reportC
+    p.reportC    = make(chan PipeProgress)
     p.totalSize  = totalSize
     p.accumlated = 0
     p.pipeUpdate = time.Time{}
     p.pipeSpeed  = 0.0
 
-    return r, w
+    return r, w, p.reportC
 }
