@@ -20,15 +20,16 @@ func TestPipeReport1(t *testing.T) {
     )
     go checkWrite(t, w, message, c)
     go func() {
-        pr := <- p
-        if pr.TotalSize != msgLen {
-            t.Error("invalid total size")
-        }
-        if pr.Accumulated != msgLen {
-            t.Error("invalid accumulated size")
-        }
-        if pr.Remaining != 0 {
-            t.Error("invalid remaining size")
+        for pr := range p {
+            if pr.TotalSize != msgLen {
+                t.Error("invalid total size")
+            }
+            if pr.Accumulated != msgLen {
+                t.Error("invalid accumulated size")
+            }
+            if pr.Remaining != 0 {
+                t.Error("invalid remaining size")
+            }
         }
     }()
     n, err := r.Read(buf)
