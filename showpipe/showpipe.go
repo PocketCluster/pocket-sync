@@ -155,6 +155,7 @@ func (p *pipe) rclose(err error) {
     // need to close channel at this place
     if p.reportC != nil {
         close(p.reportC)
+        p.reportC = nil
     }
     p.rwait.Signal()
     p.wwait.Signal()
