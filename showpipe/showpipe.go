@@ -29,10 +29,50 @@ type pipe struct {
     rerr       error      // if reader closed, error to give writes
     werr       error      // if writer closed, error to give reads
 
-    reportC    chan float32
-    lastUpdate time.Time
+    reportC    chan PipeProgress
     totalSize  uint64
     accumlated uint64
+    pipeUpdate time.Time
+    pipeSpeed  float32
+}
+
+type PipeProgress struct {
+    TotalSize   uint64
+    Accumulated uint64
+    Remaining   uint64
+    DonePercent float32
+    Speed       float32
+}
+
+func reportProgress(p *pipe, transferred int) {
+    var (
+        done float32 = 0.0
+    )
+    if p.reportC != nil {
+        p.accumlated += uint64(transferred)
+        done = float32(float64(p.accumlated) / float64(p.totalSize))
+
+        p.reportC <- PipeProgress{
+            TotalSize:      p.totalSize,
+            Accumulated:    p.accumlated,
+            Remaining:      p.totalSize - p.accumlated,
+            DonePercent:    done,
+            Speed:          p.pipeSpeed,
+        }
+    }
+}
+
+func checkSpeed(p *pipe, submitted int) {
+    var speed float32 = 0.0
+    if p.pipeUpdate.IsZero() {
+        speed = float32(submitted)
+    } else {
+        now := time.Now()
+        dt := float64(now.Sub(p.pipeUpdate))
+        speed = float32(float64(submitted) / dt)
+        p.pipeUpdate = now
+    }
+    p.pipeSpeed = speed
 }
 
 func (p *pipe) read(b []byte) (n int, err error) {
@@ -55,6 +95,10 @@ func (p *pipe) read(b []byte) (n int, err error) {
         p.rwait.Wait()
     }
     n = copy(b, p.data)
+
+    // report to progress
+    reportProgress(p, n)
+
     p.data = p.data[n:]
     if len(p.data) == 0 {
         p.data = nil
@@ -77,6 +121,9 @@ func (p *pipe) write(b []byte) (n int, err error) {
 
     p.l.Lock()
     defer p.l.Unlock()
+
+    // this is a greate place to check speed
+    checkSpeed(p, len(b))
     if p.werr != nil {
         err = ErrClosedPipe
         return
@@ -198,7 +245,7 @@ func Pipe() (*PipeReader, *PipeWriter) {
     return r, w
 }
 
-func PipeWithSize(totalSize uint64, reportC chan float32) (*PipeReader, *PipeWriter) {
+func PipeWithSize(totalSize uint64, reportC chan PipeProgress) (*PipeReader, *PipeWriter) {
     p := new(pipe)
     p.rwait.L = &p.l
     p.wwait.L = &p.l
@@ -206,9 +253,10 @@ func PipeWithSize(totalSize uint64, reportC chan float32) (*PipeReader, *PipeWri
     w := &PipeWriter{p}
 
     p.reportC    = reportC
-    p.lastUpdate = time.Time{}
     p.totalSize  = totalSize
     p.accumlated = 0
+    p.pipeUpdate = time.Time{}
+    p.pipeSpeed  = 0.0
 
     return r, w
 }
