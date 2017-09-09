@@ -31,14 +31,14 @@ type pipe struct {
 
     reportC    chan PipeProgress
     totalSize  uint64
-    accumlated uint64
+    received   uint64
     pipeUpdate time.Time
     pipeSpeed  float32
 }
 
 type PipeProgress struct {
     TotalSize   uint64
-    Accumulated uint64
+    Received    uint64
     Remaining   uint64
     DonePercent float32
     Speed       float32
@@ -46,15 +46,15 @@ type PipeProgress struct {
 
 func reportProgress(p *pipe, transferred int) {
     if p.reportC != nil {
-        p.accumlated += uint64(transferred)
-        var done = float32(float64(p.accumlated) / float64(p.totalSize))
+        p.received += uint64(transferred)
+        var done = float32(float64(p.received) / float64(p.totalSize))
 
         p.reportC <- PipeProgress{
-            TotalSize:      p.totalSize,
-            Accumulated:    p.accumlated,
-            Remaining:      p.totalSize - p.accumlated,
-            DonePercent:    done,
-            Speed:          p.pipeSpeed,
+            TotalSize:   p.totalSize,
+            Received:    p.received,
+            Remaining:   p.totalSize - p.received,
+            DonePercent: done,
+            Speed:       p.pipeSpeed,
         }
     }
 }
@@ -256,7 +256,7 @@ func PipeWithReport(totalSize uint64) (*PipeReader, *PipeWriter, <- chan PipePro
 
     p.reportC    = make(chan PipeProgress)
     p.totalSize  = totalSize
-    p.accumlated = 0
+    p.received   = 0
     p.pipeUpdate = time.Time{}
     p.pipeSpeed  = 0.0
 

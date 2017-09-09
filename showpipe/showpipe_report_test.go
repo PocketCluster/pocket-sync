@@ -24,7 +24,7 @@ func TestPipeReport1(t *testing.T) {
             if pr.TotalSize != msgLen {
                 t.Error("invalid total size")
             }
-            if pr.Accumulated != msgLen {
+            if pr.Received != msgLen {
                 t.Error("invalid accumulated size")
             }
             if pr.Remaining != 0 {
@@ -75,8 +75,8 @@ func TestPipeReport2(t *testing.T) {
                     t.Errorf("invalid total size")
                 }
                 acc += (5 + i * 10); i++
-                if p.Accumulated != acc {
-                    t.Errorf("invalid accumlated size %v vs %v", p.Accumulated, acc)
+                if p.Received != acc {
+                    t.Errorf("invalid received size %v vs %v", p.Received, acc)
                 }
 
             }
@@ -119,17 +119,11 @@ func TestPipeReport3(t *testing.T) {
         tot = 0
 
         reportTest = func(rpt <- chan PipeProgress) {
-            var (
-                i, acc uint64 = 0, 0
-            )
             for p := range rpt {
                 if p.TotalSize != totLen {
                     t.Errorf("invalid total size")
                 }
-                acc += (5 + i * 10); i++
-
-                t.Logf("invalid accumlated size %v vs %v", p.Accumulated, acc)
-
+                t.Logf("received size %v", p.Received)
             }
         }
     )
@@ -177,7 +171,13 @@ func TestPipeReport3(t *testing.T) {
 func TestPipeReportReadClose(t *testing.T) {
     for _, tt := range pipeTests {
         c := make(chan int, 1)
-        r, w := Pipe()
+        r, w, p := PipeWithReport(10)
+        go func() {
+            pr := <- p
+            if pr.Received != 0 {
+                t.Error("invalid received size")
+            }
+        }()
         if tt.async {
             go delayClose(t, w, c, tt)
         } else {
@@ -205,7 +205,12 @@ func TestPipeReportReadClose(t *testing.T) {
 // Test close on Read side during Read.
 func TestPipeReportReadClose2(t *testing.T) {
     c := make(chan int, 1)
-    r, _ := Pipe()
+    r, _, p := PipeWithReport(64)
+    go func() {
+       for _ = range p {
+           t.Error("shouldn't have triggered at all")
+       }
+    }()
     go delayClose(t, r, c, pipeTest{})
     n, err := r.Read(make([]byte, 64))
     <-c
@@ -219,7 +224,7 @@ func TestPipeReportReadClose2(t *testing.T) {
 func TestPipeReportWriteClose(t *testing.T) {
     for _, tt := range pipeTests {
         c := make(chan int, 1)
-        r, w := Pipe()
+        r, w, _ := PipeWithReport(uint64(len("hello, world")))
         if tt.async {
             go delayClose(t, r, c, tt)
         } else {
@@ -244,10 +249,16 @@ func TestPipeReportWriteClose(t *testing.T) {
 }
 
 func TestReportWriteEmpty(t *testing.T) {
-    r, w := Pipe()
+    r, w, p := PipeWithReport(10)
     go func() {
         w.Write([]byte{})
         w.Close()
+    }()
+    go func() {
+        pr := <- p
+        if pr.Received != 0 {
+            t.Error("invalid received size")
+        }
     }()
     var b [2]byte
     io.ReadFull(r, b[0:2])
@@ -255,10 +266,16 @@ func TestReportWriteEmpty(t *testing.T) {
 }
 
 func TestReportWriteNil(t *testing.T) {
-    r, w := Pipe()
+    r, w, p := PipeWithReport(10)
     go func() {
         w.Write(nil)
         w.Close()
+    }()
+    go func() {
+        pr := <- p
+        if pr.Received != 0 {
+            t.Error("invalid received size")
+        }
     }()
     var b [2]byte
     io.ReadFull(r, b[0:2])
@@ -266,18 +283,31 @@ func TestReportWriteNil(t *testing.T) {
 }
 
 func TestReportWriteAfterWriterClose(t *testing.T) {
-    r, w := Pipe()
+    var (
+        hello = []byte("hello")
+        hLen = uint64(len(hello))
+    )
+    r, w, p := PipeWithReport(hLen)
 
     done := make(chan bool)
     var writeErr error
     go func() {
-        _, err := w.Write([]byte("hello"))
+        _, err := w.Write(hello)
         if err != nil {
             t.Errorf("got error: %q; expected none", err)
         }
         w.Close()
         _, writeErr = w.Write([]byte("world"))
         done <- true
+    }()
+    go func() {
+        pr := <- p
+        if pr.TotalSize != hLen {
+            t.Error("invalid total size")
+        }
+        if pr.Received != hLen {
+            t.Error("invalid received size")
+        }
     }()
 
     buf := make([]byte, 100)
