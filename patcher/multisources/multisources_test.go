@@ -275,7 +275,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
     var (
         cancelC  = make(chan struct{})
         verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
-            return []byte{0x00}, nil
+            return nil, errors.Errorf("test")
         })
 
         out   = bytes.NewBuffer(nil)
@@ -332,7 +332,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
     }
     go func() {
         <-cancelC
-        <- time.After(time.Second)
+        <- time.After(time.Millisecond)
         src.Close()
     }()
     close(cancelC)
