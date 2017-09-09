@@ -116,6 +116,7 @@ func (b *BlockRepositoryBase) HandleRequest(
         waiter.Done()
     }()
 
+    // TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
     requestLoop: for {
         if len(requestQueue) != 0 {
             // dispatch queued request

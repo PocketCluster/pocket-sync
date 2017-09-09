@@ -268,6 +268,81 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     }
 }
 
+// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
+func Test_MultiSource_Cancel(t *testing.T) {
+    setup()
+    defer clean()
+
+    var (
+        cancelC  = make(chan struct{})
+        verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            return nil, errors.Errorf("test")
+        })
+
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelC
+                    log.Infof("src #0 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+
+            blockrepository.NewBlockRepositoryBase(
+                1,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelC
+                    log.Infof("src #1 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+
+            blockrepository.NewBlockRepositoryBase(
+                2,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelC
+                    log.Infof("src #2 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+
+            blockrepository.NewBlockRepositoryBase(
+                3,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelC
+                    log.Infof("src #3 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+        }
+    )
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        &testBlkRef{},
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+    go func() {
+        <-cancelC
+        <- time.After(time.Millisecond)
+        src.Close()
+    }()
+    close(cancelC)
+    err = src.Patch()
+    if err != nil {
+        t.Fatal(err)
+    }
+}
+
 func Test_MultiRandom_Source_Patching(t *testing.T) {
     setup()
     defer clean()
