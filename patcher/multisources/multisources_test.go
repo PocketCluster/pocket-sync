@@ -268,6 +268,7 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     }
 }
 
+// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
 func Test_MultiSource_Cancel(t *testing.T) {
     setup()
     defer clean()
