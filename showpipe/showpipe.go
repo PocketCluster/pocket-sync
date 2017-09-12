@@ -247,7 +247,7 @@ func Pipe() (*PipeReader, *PipeWriter) {
     return r, w
 }
 
-func PipeWithReport(totalSize uint64) (*PipeReader, *PipeWriter, <- chan PipeProgress) {
+func PipeWithReport(totalSize uint64) (*PipeReader, *PipeWriter, chan PipeProgress) {
     p := new(pipe)
     p.rwait.L = &p.l
     p.wwait.L = &p.l

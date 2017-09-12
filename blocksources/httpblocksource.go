@@ -19,12 +19,12 @@ var (
     ResponseFromServerWasGZiped = errors.New("HTTP response was gzip encoded. Ranges may not match those requested.")
 )
 
-func NewRequesterWithTimeout(url, uagent string, doCompress bool, timeout time.Duration) *HttpRequester {
+func NewRequesterWithTimeout(url, uagent string, noCompress bool, timeout time.Duration) *HttpRequester {
     return &HttpRequester{
         client: &http.Client{
             Timeout:    timeout,
             Transport:  &http.Transport{
-                DisableCompression: doCompress,
+                DisableCompression: noCompress,
             },
         },
         url:    url,
