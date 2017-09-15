@@ -12,6 +12,23 @@ import (
     "github.com/Redundancy/go-sync/util/uslice"
 )
 
+func newInterruptError(msg string) error {
+    return &intError{s:msg}
+}
+
+type intError struct {
+    s string
+}
+
+func (i *intError) Error() string {
+    return i.s
+}
+
+func IsInterruptError(err error) bool {
+    _, ok := err.(*intError)
+    return ok
+}
+
 /*
  * MultiSources Patcher will stream the patched version of the file to output from multiple sources, since it works
  * strictly in order, it cannot patch the local file directly (since it might overwrite a block needed later), so there
@@ -205,7 +222,7 @@ func (m *MultiSourcePatcher) Patch() error {
         select {
             case <- m.exitC:
                 // TODO : this is interruption. test error conditions & make sure all channels closed properly
-                return nil
+                return newInterruptError("sync halted by user interruption")
 
             // at this point, the erronous repository will not be added back to available pool and removed from pool
             case err := <- m.repoErrorC: {

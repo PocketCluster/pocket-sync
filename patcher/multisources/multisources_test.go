@@ -268,13 +268,12 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     }
 }
 
-// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
-func Test_MultiSource_Cancel(t *testing.T) {
+// TODO : this should work but due to how block repo works, this will panic. need to fix it later
+func Skip_Cancelled_Patcher(t *testing.T) {
     setup()
     defer clean()
 
     var (
-        cancelC  = make(chan struct{})
         verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
             return nil, errors.Errorf("test")
         })
@@ -285,7 +284,50 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 0,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    log.Infof("src #0 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+        }
+    )
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        &testBlkRef{},
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+    // exit all repos and then patch
+    src.Close()
+    err = src.Patch()
+    if err == nil {
+        t.Fatal(err)
+    }
+    if !IsInterruptError(err) {
+        t.Fatalf("patch error should be interrupt error : Error", err.Error())
+    }
+}
+
+// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
+func Test_MultiSource_Cancel(t *testing.T) {
+    setup()
+    defer clean()
+
+    var (
+        cancelReadyC = make(chan struct{})
+        verifier     = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            return nil, errors.Errorf("test")
+        })
+
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelReadyC
                     log.Infof("src #0 requested")
                     return []byte{0x00}, nil
                 }),
@@ -295,7 +337,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 1,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #1 requested")
                     return []byte{0x00}, nil
                 }),
@@ -305,7 +347,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 2,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #2 requested")
                     return []byte{0x00}, nil
                 }),
@@ -315,7 +357,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 3,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #3 requested")
                     return []byte{0x00}, nil
                 }),
@@ -332,14 +374,18 @@ func Test_MultiSource_Cancel(t *testing.T) {
         t.Fatal(err)
     }
     go func() {
-        <-cancelC
-        <- time.After(time.Millisecond)
+        // we need to be sure all the repos are on the go
+        <-cancelReadyC
+        <- time.After(time.Second)
         src.Close()
     }()
-    close(cancelC)
+    close(cancelReadyC)
     err = src.Patch()
-    if err != nil {
-        t.Fatal(err)
+    if err == nil {
+        t.Fatal("there should be user halt error")
+    }
+    if !IsInterruptError(err) {
+        t.Fatalf("should be user halt error. Reason : %v", err.Error())
     }
 }
 
