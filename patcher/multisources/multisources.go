@@ -83,13 +83,15 @@ type MultiSourcePatcher struct {
     repoResponseC    chan patcher.RepositoryResponse
 }
 
+// It is presumed that `Close()` and `Patch()` works on different routines
 func (m *MultiSourcePatcher) Close() error {
-    close(m.repoExitC)
-    m.repoWaiter.Wait()
-
-    // at this point all blkrepo exit
+    // close patcher first so we don't make request to closed repos
     close(m.exitC)
     m.waiter.Wait()
+
+    // at this point it's safe to
+    close(m.repoExitC)
+    m.repoWaiter.Wait()
 
     // now close all other channels
     close(m.repoErrorC)
