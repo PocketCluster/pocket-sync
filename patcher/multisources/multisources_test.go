@@ -35,7 +35,6 @@ var (
     REFERENCE_RTHASH []byte        = nil
     REFERENCE_CHKSEQ chunks.SequentialChecksumList = nil
     BLOCK_COUNT      int           = 0
-
 )
 
 func setup() {
@@ -113,11 +112,11 @@ func buildSequentialChecksum(refBlks []string, sChksums [][]byte, blocksize int)
 }
 
 type testBlkRef struct{}
-func(t *testBlkRef) EndBlockID() uint {
+func (t *testBlkRef) EndBlockID() uint {
     return REFERENCE_CHKSEQ[len(REFERENCE_CHKSEQ) - 1].ChunkOffset
 }
 
-func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
+func (t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
     for _, c := range REFERENCE_CHKSEQ {
         if c.ChunkOffset == blockID {
             return patcher.MissingBlockSpan{
@@ -127,11 +126,10 @@ func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpa
             }, nil
         }
     }
-
     return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
 }
 
-func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
+func (t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
     hToCheck, err := merkle.SimpleHashFromHashes(hashes)
     if err != nil {
         return err
@@ -140,7 +138,6 @@ func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
         return errors.Errorf("[ERR] calculated root hash different from referenece")
     }
     return nil
-
 }
 
 func Test_Available_Pool_Addition(t *testing.T) {
@@ -156,7 +153,6 @@ func Test_Available_Pool_Addition(t *testing.T) {
         }
         ids uslice.UintSlice = makeRepositoryPoolFromMap(poolMap)
     )
-
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
         t.Errorf("findAllAvailableRepoID should find all ids")
     }
