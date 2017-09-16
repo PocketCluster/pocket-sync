@@ -93,6 +93,7 @@ func (m *MultiSourcePatcher) Close() error {
     // now close all other channels
     close(m.repoErrorC)
     close(m.repoResponseC)
+    log.Info("MultiSourcePatcher Closed")
     return nil
 }
 
