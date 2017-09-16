@@ -59,10 +59,7 @@ func NewMultiSourcePatcher(
         blockRef:      blockRef,
 
         waiter:        &sync.WaitGroup{},
-        exitC:         make(chan struct{}),
-
-        repoWaiter:    &sync.WaitGroup{},
-        repoExitC:     make(chan bool),
+        exitC:         make(chan bool),
         repoErrorC:    make(chan *patcher.RepositoryError),
         repoResponseC: make(chan patcher.RepositoryResponse),
     }, nil
@@ -76,11 +73,7 @@ type MultiSourcePatcher struct {
     blockRef         patcher.SeqChecksumReference
 
     waiter           *sync.WaitGroup
-    exitC            chan struct{}
-
-    // repository handling
-    repoWaiter       *sync.WaitGroup
-    repoExitC        chan bool
+    exitC            chan bool
     repoErrorC       chan *patcher.RepositoryError
     repoResponseC    chan patcher.RepositoryResponse
 }
@@ -94,13 +87,8 @@ func (m *MultiSourcePatcher) Close() error {
     }
     m.isClosed = true
 
-    // close patcher first so we don't make request to closed repos
     close(m.exitC)
     m.waiter.Wait()
-
-    // at this point it's safe to
-    close(m.repoExitC)
-    m.repoWaiter.Wait()
 
     // now close all other channels
     close(m.repoErrorC)
@@ -131,8 +119,8 @@ func (m *MultiSourcePatcher) Patch() error {
 
     // launch repository pool
     for _, r := range m.repositories {
-        m.repoWaiter.Add(1)
-        go r.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
+        m.waiter.Add(1)
+        go r.HandleRequest(m.waiter, m.exitC, m.repoErrorC, m.repoResponseC)
     }
 
     for {
@@ -205,6 +193,7 @@ func (m *MultiSourcePatcher) Patch() error {
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
                         log.Errorf("[PATCHER] could not write data to output: %v", err)
+                        return errors.WithStack(err)
                     }
                     // save Strong checksum to list
                     if result.StrongChecksum != nil {
