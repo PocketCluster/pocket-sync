@@ -233,7 +233,7 @@ func (m *MultiSourcePatcher) Patch() error {
         select {
             case <- m.exitC:
                 // TODO : this is interruption. test error conditions & make sure all channels closed properly
-                return newInterruptError("sync halted by user interruption")
+                return newInterruptError("sync halted by interruption")
 
             // at this point, the erronous repository will not be added back to available pool and removed from pool
             case err := <- m.repoErrorC: {
