@@ -69,6 +69,8 @@ func NewMultiSourcePatcher(
 }
 
 type MultiSourcePatcher struct {
+    sync.Mutex
+    isClosed         bool
     output           io.Writer
     repositories     map[uint]patcher.BlockRepository
     blockRef         patcher.SeqChecksumReference
@@ -85,6 +87,13 @@ type MultiSourcePatcher struct {
 
 // It is presumed that `Close()` and `Patch()` works on different routines
 func (m *MultiSourcePatcher) Close() error {
+    m.Lock()
+    defer m.Unlock()
+    if m.isClosed {
+        return nil
+    }
+    m.isClosed = true
+
     // close patcher first so we don't make request to closed repos
     close(m.exitC)
     m.waiter.Wait()
