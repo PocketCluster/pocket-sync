@@ -12,6 +12,23 @@ import (
     "github.com/Redundancy/go-sync/util/uslice"
 )
 
+func newInterruptError(msg string) error {
+    return &intError{s:msg}
+}
+
+type intError struct {
+    s string
+}
+
+func (i *intError) Error() string {
+    return i.s
+}
+
+func IsInterruptError(err error) bool {
+    _, ok := err.(*intError)
+    return ok
+}
+
 /*
  * MultiSources Patcher will stream the patched version of the file to output from multiple sources, since it works
  * strictly in order, it cannot patch the local file directly (since it might overwrite a block needed later), so there
@@ -42,41 +59,41 @@ func NewMultiSourcePatcher(
         blockRef:      blockRef,
 
         waiter:        &sync.WaitGroup{},
-        exitC:         make(chan struct{}),
-
-        repoWaiter:    &sync.WaitGroup{},
-        repoExitC:     make(chan bool),
+        exitC:         make(chan bool),
         repoErrorC:    make(chan *patcher.RepositoryError),
         repoResponseC: make(chan patcher.RepositoryResponse),
     }, nil
 }
 
 type MultiSourcePatcher struct {
+    sync.Mutex
+    isClosed         bool
     output           io.Writer
     repositories     map[uint]patcher.BlockRepository
     blockRef         patcher.SeqChecksumReference
 
     waiter           *sync.WaitGroup
-    exitC            chan struct{}
-
-    // repository handling
-    repoWaiter       *sync.WaitGroup
-    repoExitC        chan bool
+    exitC            chan bool
     repoErrorC       chan *patcher.RepositoryError
     repoResponseC    chan patcher.RepositoryResponse
 }
 
+// It is presumed that `Close()` and `Patch()` works on different routines
 func (m *MultiSourcePatcher) Close() error {
-    close(m.repoExitC)
-    m.repoWaiter.Wait()
+    m.Lock()
+    defer m.Unlock()
+    if m.isClosed {
+        return nil
+    }
+    m.isClosed = true
 
-    // at this point all blkrepo exit
     close(m.exitC)
     m.waiter.Wait()
 
     // now close all other channels
     close(m.repoErrorC)
     close(m.repoResponseC)
+    log.Info("MultiSourcePatcher Closed")
     return nil
 }
 
@@ -103,8 +120,8 @@ func (m *MultiSourcePatcher) Patch() error {
 
     // launch repository pool
     for _, r := range m.repositories {
-        m.repoWaiter.Add(1)
-        go r.HandleRequest(m.repoWaiter, m.repoExitC, m.repoErrorC, m.repoResponseC)
+        m.waiter.Add(1)
+        go r.HandleRequest(m.waiter, m.exitC, m.repoErrorC, m.repoResponseC)
     }
 
     for {
@@ -177,6 +194,7 @@ func (m *MultiSourcePatcher) Patch() error {
                     result := responseOrdering[len(responseOrdering) - 1]
                     if _, err := m.output.Write(result.Data); err != nil {
                         log.Errorf("[PATCHER] could not write data to output: %v", err)
+                        return errors.WithStack(err)
                     }
                     // save Strong checksum to list
                     if result.StrongChecksum != nil {
@@ -205,7 +223,7 @@ func (m *MultiSourcePatcher) Patch() error {
         select {
             case <- m.exitC:
                 // TODO : this is interruption. test error conditions & make sure all channels closed properly
-                return nil
+                return newInterruptError("sync halted by an interruption")
 
             // at this point, the erronous repository will not be added back to available pool and removed from pool
             case err := <- m.repoErrorC: {

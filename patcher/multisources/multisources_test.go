@@ -35,7 +35,6 @@ var (
     REFERENCE_RTHASH []byte        = nil
     REFERENCE_CHKSEQ chunks.SequentialChecksumList = nil
     BLOCK_COUNT      int           = 0
-
 )
 
 func setup() {
@@ -113,11 +112,11 @@ func buildSequentialChecksum(refBlks []string, sChksums [][]byte, blocksize int)
 }
 
 type testBlkRef struct{}
-func(t *testBlkRef) EndBlockID() uint {
+func (t *testBlkRef) EndBlockID() uint {
     return REFERENCE_CHKSEQ[len(REFERENCE_CHKSEQ) - 1].ChunkOffset
 }
 
-func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
+func (t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpan, error) {
     for _, c := range REFERENCE_CHKSEQ {
         if c.ChunkOffset == blockID {
             return patcher.MissingBlockSpan{
@@ -127,11 +126,10 @@ func(t *testBlkRef) MissingBlockSpanForID(blockID uint) (patcher.MissingBlockSpa
             }, nil
         }
     }
-
     return patcher.MissingBlockSpan{}, errors.Errorf("[ERR] invalid missing block index %v", blockID)
 }
 
-func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
+func (t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
     hToCheck, err := merkle.SimpleHashFromHashes(hashes)
     if err != nil {
         return err
@@ -140,7 +138,6 @@ func(t *testBlkRef) VerifyRootHash(hashes [][]byte) error {
         return errors.Errorf("[ERR] calculated root hash different from referenece")
     }
     return nil
-
 }
 
 func Test_Available_Pool_Addition(t *testing.T) {
@@ -156,7 +153,6 @@ func Test_Available_Pool_Addition(t *testing.T) {
         }
         ids uslice.UintSlice = makeRepositoryPoolFromMap(poolMap)
     )
-
     if reflect.DeepEqual(ids, []uint{0, 1, 4, 7, 13, 42, 92}) {
         t.Errorf("findAllAvailableRepoID should find all ids")
     }
@@ -268,13 +264,12 @@ func Test_MultiSource_Basic_Patching(t *testing.T) {
     }
 }
 
-// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
-func Test_MultiSource_Cancel(t *testing.T) {
+// TODO : this should work but due to how block repo works, this will panic. need to fix it later
+func Skip_Cancelled_Patcher(t *testing.T) {
     setup()
     defer clean()
 
     var (
-        cancelC  = make(chan struct{})
         verifier = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
             return nil, errors.Errorf("test")
         })
@@ -285,7 +280,50 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 0,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    log.Infof("src #0 requested")
+                    return []byte{0x00}, nil
+                }),
+                blockrepository.MakeKnownFileSizedBlockResolver(BLOCKSIZE, int64(len(REFERENCE_STRING))),
+                verifier),
+        }
+    )
+    src, err := NewMultiSourcePatcher(
+        out,
+        repos,
+        &testBlkRef{},
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+    // exit all repos and then patch
+    src.Close()
+    err = src.Patch()
+    if err == nil {
+        t.Fatal(err)
+    }
+    if !IsInterruptError(err) {
+        t.Fatalf("patch error should be interrupt error : Error", err.Error())
+    }
+}
+
+// TODO : even when cancel signal is dispatched, repo source retrial keeps going. We need to fix & test that.
+func Test_MultiSource_Cancel(t *testing.T) {
+    setup()
+    defer clean()
+
+    var (
+        cancelReadyC = make(chan struct{})
+        verifier     = blockrepository.FunctionChecksumVerifier(func(startBlockID uint, data []byte) ([]byte, error){
+            return nil, errors.Errorf("test")
+        })
+
+        out   = bytes.NewBuffer(nil)
+        repos = []patcher.BlockRepository{
+
+            blockrepository.NewBlockRepositoryBase(
+                0,
+                blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
+                    <-cancelReadyC
                     log.Infof("src #0 requested")
                     return []byte{0x00}, nil
                 }),
@@ -295,7 +333,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 1,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #1 requested")
                     return []byte{0x00}, nil
                 }),
@@ -305,7 +343,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 2,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #2 requested")
                     return []byte{0x00}, nil
                 }),
@@ -315,7 +353,7 @@ func Test_MultiSource_Cancel(t *testing.T) {
             blockrepository.NewBlockRepositoryBase(
                 3,
                 blocksources.FunctionRequester(func(start, end int64) (data []byte, err error) {
-                    <-cancelC
+                    <-cancelReadyC
                     log.Infof("src #3 requested")
                     return []byte{0x00}, nil
                 }),
@@ -332,14 +370,18 @@ func Test_MultiSource_Cancel(t *testing.T) {
         t.Fatal(err)
     }
     go func() {
-        <-cancelC
-        <- time.After(time.Millisecond)
+        // we need to be sure all the repos are on the go
+        <-cancelReadyC
+        <- time.After(time.Second)
         src.Close()
     }()
-    close(cancelC)
+    close(cancelReadyC)
     err = src.Patch()
-    if err != nil {
-        t.Fatal(err)
+    if err == nil {
+        t.Fatal("there should be user halt error")
+    }
+    if !IsInterruptError(err) {
+        t.Fatalf("should be user halt error. Reason : %v", err.Error())
     }
 }
 
