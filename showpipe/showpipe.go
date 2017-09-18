@@ -33,21 +33,21 @@ type pipe struct {
     totalSize  uint64
     received   uint64
     pipeUpdate time.Time
-    pipeSpeed  float32
+    pipeSpeed  float64
 }
 
 type PipeProgress struct {
     TotalSize   uint64
     Received    uint64
     Remaining   uint64
-    DonePercent float32
-    Speed       float32
+    DonePercent float64
+    Speed       float64
 }
 
 func reportProgress(p *pipe, transferred int) {
     if p.reportC != nil {
         p.received += uint64(transferred)
-        var done = float32(float64(p.received) / float64(p.totalSize))
+        var done = float64(p.received) / float64(p.totalSize)
 
         p.reportC <- PipeProgress{
             TotalSize:   p.totalSize,
@@ -60,15 +60,14 @@ func reportProgress(p *pipe, transferred int) {
 }
 
 func checkSpeed(p *pipe, submitted int) {
-    var speed float32 = 0.0
-    if p.pipeUpdate.IsZero() {
-        speed = float32(submitted)
-    } else {
-        now := time.Now()
-        dt := float64(now.Sub(p.pipeUpdate))
-        speed = float32(float64(submitted) / dt)
-        p.pipeUpdate = now
+    var (
+        speed float64 = float64(submitted)
+        now time.Time = time.Now()
+    )
+    if !p.pipeUpdate.IsZero() {
+        speed /= float64(now.Sub(p.pipeUpdate))
     }
+    p.pipeUpdate = now
     p.pipeSpeed = speed
 }
 
