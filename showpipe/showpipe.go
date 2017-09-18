@@ -256,7 +256,7 @@ func PipeWithReport(totalSize uint64) (*PipeReader, *PipeWriter, chan PipeProgre
     p.reportC    = make(chan PipeProgress)
     p.totalSize  = totalSize
     p.received   = 0
-    p.pipeUpdate = time.Time{}
+    p.pipeUpdate = time.Now()
     p.pipeSpeed  = 0.0
 
     return r, w, p.reportC
