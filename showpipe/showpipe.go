@@ -65,7 +65,7 @@ func checkSpeed(p *pipe, submitted int) {
         now time.Time = time.Now()
     )
     if !p.pipeUpdate.IsZero() {
-        speed /= float64(now.Sub(p.pipeUpdate))
+        speed /= now.Sub(p.pipeUpdate).Seconds()
     }
     p.pipeUpdate = now
     p.pipeSpeed = speed
