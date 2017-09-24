@@ -39,8 +39,8 @@ func TestPipeReport1(t *testing.T) {
         t.Errorf("bad read: got %q", buf[0:n])
     }
     <-c
-    r.Close()
     w.Close()
+    r.Close()
 }
 
 // Test a sequence of read/write pairs.
@@ -224,7 +224,12 @@ func TestPipeReportReadClose2(t *testing.T) {
 func TestPipeReportWriteClose(t *testing.T) {
     for _, tt := range pipeTests {
         c := make(chan int, 1)
-        r, w, _ := PipeWithReport(uint64(len("hello, world")))
+        r, w, p := PipeWithReport(uint64(len("hello, world")))
+        go func() {
+            for _ = range p {
+                t.Log("TestPipeReportWriteClose")
+            }
+        }()
         if tt.async {
             go delayClose(t, r, c, tt)
         } else {
