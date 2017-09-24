@@ -91,10 +91,6 @@ func (p *pipe) read(b []byte) (n int, err error) {
         p.rwait.Wait()
     }
     n = copy(b, p.data)
-
-    // report to progress
-    reportProgress(p, n)
-
     p.data = p.data[n:]
     if len(p.data) == 0 {
         p.data = nil
@@ -140,6 +136,8 @@ func (p *pipe) write(b []byte) (n int, err error) {
         p.wwait.Wait()
     }
     n = len(b) - len(p.data)
+    // report to progress
+    reportProgress(p, n)
     p.data = nil // in case of rerr or werr
     return
 }
@@ -151,11 +149,6 @@ func (p *pipe) rclose(err error) {
     p.l.Lock()
     defer p.l.Unlock()
     p.rerr = err
-    // need to close channel at this place
-    if p.reportC != nil {
-        close(p.reportC)
-        p.reportC = nil
-    }
     p.rwait.Signal()
     p.wwait.Signal()
 }
@@ -167,6 +160,11 @@ func (p *pipe) wclose(err error) {
     p.l.Lock()
     defer p.l.Unlock()
     p.werr = err
+    // need to close channel at this place
+    if p.reportC != nil {
+        close(p.reportC)
+        p.reportC = nil
+    }
     p.rwait.Signal()
     p.wwait.Signal()
 }
